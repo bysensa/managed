@@ -1,3 +1,7 @@
-## 0.0.1
+## 0.1.0
 
-* TODO: Describe initial release.
+* First release
+* [FEAT] Multi-type dependency registration
+* [FEAT] Simple dependency provider definition
+* [FEAT] Simple dependency registration
+* [FEAT] Basic dependency container API (remove, reset, is[Not]Registered)
