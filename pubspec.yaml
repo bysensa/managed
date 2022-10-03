@@ -1,0 +1,21 @@
+name: managed
+description: Experimental implementation of dependency injection without code generation
+version: 0.1.0
+repository: https://github.com/bysensa/managed
+
+environment:
+  sdk: ">=2.16.2 <3.0.0"
+  flutter: ">=2.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^1.0.0
+
+
+flutter:
+
