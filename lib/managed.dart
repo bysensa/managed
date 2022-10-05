@@ -92,7 +92,7 @@ extension ManageableRegistrationExt<T extends Manageable> on T {
   /// The [StateError] can be thrown if type [T] is not implement type [S]. Instance [T]
   /// will be returned after registration
   T availableAs<S>() {
-    ManagementContainer._put(this);
+    ManagementContainer._put<S>(this);
     return this;
   }
 }
