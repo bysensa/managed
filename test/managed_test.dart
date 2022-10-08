@@ -3,53 +3,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:managed/managed.dart';
 
 void main() {
-  tearDown(() {
-    ManagementContainer.reset();
+  test('should provide dependency', () {
+    Dependency testFactory() => Dependency();
+    Manage(testFactory);
+    final testClass = TestClass();
+    expect(testClass.dependency(), isA<Dependency>());
   });
 
-  test('should provide registered dependency', () {
-    final dep =
-        Dependency().availableAs<Dependency>().availableAs<DependencyApi>();
-
-    expect(TestClass().instance(), isA<Dependency>());
-    expect(TestClass().instance(), dep);
-
-    expect(TestClass().instanceApi(), isA<DependencyApi>());
-    expect(TestClass().instanceApi(), dep);
-  });
-
-  test('should check is registered', () {
-    expect(ManagementContainer.isNotRegistered<Dependency>(), isTrue);
-    expect(ManagementContainer.isNotRegistered<DependencyApi>(), isTrue);
-    Dependency().availableAs<Dependency>().availableAs<DependencyApi>();
-    expect(ManagementContainer.isRegistered<Dependency>(), isTrue);
-    expect(ManagementContainer.isRegistered<DependencyApi>(), isTrue);
-  });
-
-  test('should throw on registration of unimplemented type', () {
-    expect(
-      () => Dependency().availableAs<UnimplementedApi>(),
-      throwsStateError,
-    );
-  });
-
-  test('should reset container', () {
-    Dependency().availableAs<Dependency>().availableAs<DependencyApi>();
-    expect(ManagementContainer.isRegistered<Dependency>(), isTrue);
-    expect(ManagementContainer.isRegistered<DependencyApi>(), isTrue);
-    ManagementContainer.reset();
-    expect(ManagementContainer.isNotRegistered<Dependency>(), isTrue);
-    expect(ManagementContainer.isNotRegistered<DependencyApi>(), isTrue);
+  test('should provide same dependency on multiple calls', () {
+    Dependency testFactory() => Dependency();
+    Manage(testFactory, scope: Scope.unique);
+    final testClass = TestClass();
+    final dependency1 = testClass.dependency();
+    final dependency2 = testClass.dependency();
+    expect(dependency1, dependency2);
   });
 }
+
+class Dependency {}
 
 class TestClass with Managed {
-  T instance<T extends Dependency>();
-  T instanceApi<T extends DependencyApi>();
+  T dependency<T extends Dependency>();
 }
-
-mixin DependencyApi {}
-
-mixin UnimplementedApi {}
-
-class Dependency with Manageable, DependencyApi {}

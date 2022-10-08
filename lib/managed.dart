@@ -1,39 +1,9 @@
 library managed;
 
-/// Global dependency container which store dependency in map by type
-///
-/// Single dependency can be stored by multiple types.
-var _container = <Type, Manageable>{};
+import 'package:flutter/foundation.dart';
 
-/// Extension used to interact with dependency container
-extension ManagementContainer on Expando {
-  /// Remove instance from container by registration type and return this instance
-  ///
-  /// If instance is not registered previously then null will be returned
-  static T? delete<T>() => _container.remove(T) as T?;
-
-  /// Delete all instances from container
-  static void reset() => _container.clear();
-
-  /// Check instance is registered in container
-  static bool isRegistered<T>() => _container[T] != null;
-
-  /// Check instance is not registered in container
-  static bool isNotRegistered<T>() => !isRegistered<T>();
-
-  /// Put instance in container by type [S]
-  ///
-  /// If instance is not implements type [S] then [StateError] will be thrown
-  static void _put<S>(Manageable instance) {
-    if (instance is S) {
-      _container[S] = instance;
-    } else {
-      throw StateError(
-        'Type ${instance.runtimeType} does not implement Type $S',
-      );
-    }
-  }
-}
+typedef Factory<T> = T Function();
+typedef DependsOn = Set<Manage>;
 
 /// Mixin used to provide dependency injection in target class
 ///
@@ -63,16 +33,18 @@ extension ManagementContainer on Expando {
 /// and have only one type parameter. For other cases StateError exception will be thrown.
 /// If Dependency is not registered or type parameter is wrong then StateError will be thrown
 mixin Managed {
+  DependsOn get dependsOn => {};
+
   @override
   dynamic noSuchMethod(Invocation invocation) {
     final memberName = invocation.memberName;
     final types = invocation.typeArguments;
-    final isManageableProvider = invocation.isMethod && types.length == 1;
-    if (!isManageableProvider) {
+    final isProvider = invocation.isMethod && types.length == 1;
+    if (!isProvider) {
       throw StateError('Unexpected dependency provider ($memberName)');
     }
     final type = types.first;
-    final maybeTargetType = _container[type];
+    final maybeTargetType = Manage.manageInstance(type)?._bind(this);
     if (maybeTargetType == null) {
       throw StateError('Type $type is not registered');
     }
@@ -80,19 +52,122 @@ mixin Managed {
   }
 }
 
-/// Marker mixin.
-///
-/// All dependencies which should be registered must implement this mixin
-mixin Manageable {}
-
-/// Extension for [Manageable] mixin
-extension ManageableRegistrationExt<T extends Manageable> on T {
-  /// Perform registration instance of type [T] by specified generic type [S]
+/// Extension for Managed instances
+extension ManagedExt<T extends Managed> on T {
+  /// Activate dependencies registration
   ///
-  /// The [StateError] can be thrown if type [T] is not implement type [S]. Instance [T]
-  /// will be returned after registration
-  T availableAs<S>() {
-    ManagementContainer._put<S>(this);
+  /// Example:
+  /// ```dart
+  /// class SomeModule {
+  ///   static final dependency = Manage(Dependency.new);
+  /// }
+  ///
+  /// class SomeObject with Managed {
+  ///   T dependency<T extends Dependency>();
+  /// }
+  ///
+  /// SomeObject().dependsOn({SomeModule.dependency});
+  /// ```
+  T dependsOn(DependsOn manageBy) {
     return this;
+  }
+}
+
+class Manage<T extends Object> {
+  static final _manageInstances = Expando<Manage>();
+  static Manage? manageInstance(type) => _manageInstances[type];
+
+  @visibleForTesting
+  static void resetTypeInstance(Type type) => _manageInstances[type] = null;
+
+  final _bindings = Expando<T>();
+  final Scope _scope;
+  final Factory<T> _factory;
+  T? _mock;
+
+  Manage(
+    this._factory, {
+    Scope? scope,
+    List? dependsOn,
+  }) : _scope = scope ?? Scope.unique {
+    _manageInstances[T] = this;
+  }
+
+  T call() {
+    return _mock ?? _scope.provideUsing(_factory);
+  }
+
+  T _bind(Object consumer) {
+    var instance = _bindings[consumer];
+    if (instance == null) {
+      instance = call();
+      _bindings[consumer] = instance;
+    }
+    return instance;
+  }
+
+  @visibleForTesting
+  void mock(T instance) {
+    _mock = instance;
+  }
+
+  @visibleForTesting
+  void resetMock() {
+    _mock = null;
+  }
+}
+
+abstract class Scope {
+  static final Scope unique = _UniqueScope();
+  static final Scope singleton = _SingletonScope();
+  static final Scope cached = _CachedScope();
+
+  dynamic provideUsing(Factory factory);
+  void reset();
+}
+
+class _UniqueScope implements Scope {
+  @override
+  dynamic provideUsing(Factory factory) {
+    return factory();
+  }
+
+  @override
+  void reset() {}
+}
+
+class _SingletonScope implements Scope {
+  final Map<Factory, Object> _instances = {};
+
+  @override
+  dynamic provideUsing(Factory factory) {
+    if (_instances.containsKey(factory)) {
+      return _instances[factory];
+    }
+    final instance = factory();
+    _instances[factory] = instance;
+    return instance;
+  }
+
+  @override
+  void reset() {}
+}
+
+class _CachedScope implements Scope {
+  final Map<Factory, Object> _instances = {};
+
+  @override
+  dynamic provideUsing(Factory factory) {
+    if (_instances.containsKey(factory)) {
+      return _instances[factory];
+    }
+    final instance = factory();
+    _instances[factory] = instance;
+    return instance;
+  }
+
+  @override
+  void reset() {
+    _instances.clear();
   }
 }
