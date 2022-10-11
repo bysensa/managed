@@ -3,7 +3,7 @@ library managed;
 import 'package:flutter/foundation.dart';
 
 typedef Factory<T> = T Function();
-typedef DependsOn = Set<Manage>;
+typedef ManagedBy = Set<Manage>;
 
 /// Mixin used to provide dependency injection in target class
 ///
@@ -33,43 +33,33 @@ typedef DependsOn = Set<Manage>;
 /// and have only one type parameter. For other cases StateError exception will be thrown.
 /// If Dependency is not registered or type parameter is wrong then StateError will be thrown
 mixin Managed {
-  DependsOn get dependsOn => {};
-
   @override
   dynamic noSuchMethod(Invocation invocation) {
     final memberName = invocation.memberName;
     final types = invocation.typeArguments;
+    final positionalArgs = invocation.positionalArguments;
     final isProvider = invocation.isMethod && types.length == 1;
+
     if (!isProvider) {
-      throw StateError('Unexpected dependency provider ($memberName)');
+      throw StateError(
+        'Unexpected dependency provider ($memberName).'
+        'Provider function must be defined as: '
+        'T {providerName}<T extends {dependencyType}>([_ = {providerModule}.new])',
+      );
     }
+
+    if (positionalArgs.length == 1 && positionalArgs.first is Function) {
+      // if positional arg contains element it must be module constructor
+      // call module constructor to registered provided dependency
+      positionalArgs.first();
+    }
+
     final type = types.first;
     final maybeTargetType = Manage.manageInstance(type)?._bind(this);
     if (maybeTargetType == null) {
       throw StateError('Type $type is not registered');
     }
     return maybeTargetType;
-  }
-}
-
-/// Extension for Managed instances
-extension ManagedExt<T extends Managed> on T {
-  /// Activate dependencies registration
-  ///
-  /// Example:
-  /// ```dart
-  /// class SomeModule {
-  ///   static final dependency = Manage(Dependency.new);
-  /// }
-  ///
-  /// class SomeObject with Managed {
-  ///   T dependency<T extends Dependency>();
-  /// }
-  ///
-  /// SomeObject().dependsOn({SomeModule.dependency});
-  /// ```
-  T dependsOn(DependsOn manageBy) {
-    return this;
   }
 }
 
