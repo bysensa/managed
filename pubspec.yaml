@@ -1,6 +1,6 @@
 name: managed
 description: Experimental implementation of dependency injection without code generation
-version: 0.1.1
+version: 1.0.0
 repository: https://github.com/bysensa/managed
 
 environment:
