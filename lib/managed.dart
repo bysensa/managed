@@ -1,151 +1,121 @@
 library managed;
 
+import 'dart:async';
+import 'dart:collection';
+
+import 'package:managed/annotations.dart';
 import 'package:meta/meta.dart';
 
 typedef Factory<T> = T Function();
 typedef ManagedBy = Set<Manage>;
+typedef OnNewInstance<T> = void Function(T);
+typedef ZoneValues = Map<Object?, Object?>;
 
-/// Mixin used to provide dependency injection in target class
-///
-/// Dependency injection implemented by overriding [Object.noSuchMethod].
-/// Parameter [Invocation] allow access to type parameters of target method.
-/// This behaviour allows us get concrete Type at runtime and retrieve instance by this type
-///
-/// Example
-/// ```dart
-/// class Dependency with Manageable {}
-///
-/// class ManagedObject with Managed {
-///   T dependencyInstance<T extends Dependency>();
-/// }
-/// ```
-///
-/// In the example below we define two classes. First class is `Dependency`. Instance
-/// of this class will be retrieved from dependency container. The second class is
-/// `ManagedObject`. Instance of this class becomes a consumer of `Dependency` instance.
-/// To get instance of `Dependency` we specify method `dependencyInstance` with out body and
-/// with type parameter <T extends Dependency>. By specifying bound of type parameter
-/// we declare that resulting type should implement bounded type. When this method will be invoked
-/// its invocation will be delegated to noSuchMethod because we did not declare implementation.
-/// The invocation parameter will be contains list of type parameters. For example below list of type
-/// parameters will be equal to [[Dependency]]. Not all methods will be treated as
-/// dependency provider method. We try to retrieve dependency only if invocation is method
-/// and have only one type parameter. For other cases StateError exception will be thrown.
-/// If Dependency is not registered or type parameter is wrong then StateError will be thrown
-mixin Managed {
-  @override
-  dynamic noSuchMethod(Invocation invocation) {
-    final memberName = invocation.memberName;
-    final types = invocation.typeArguments;
-    final isProvider = invocation.isMethod && types.length == 1;
+abstract class Params {
+  Type get targetType;
 
-    if (!isProvider) {
-      throw StateError(
-        'Unexpected dependency provider ($memberName).'
-        'Provider function must be defined as: \n'
-        'T {providerName}<T extends {dependencyType}>([_ = {providerModule}.new])',
-      );
-    }
-
-    final type = types.first;
-    final maybeTargetType = Manage.manageInstance(type)?._bind(this);
-    if (maybeTargetType == null) {
-      throw StateError('Type $type is not registered');
-    }
-    return maybeTargetType;
-  }
+  void inject(ZoneValues values, Map<Type, Manage> dependencies);
 }
 
-/// This class should be implemented by other modules.
-abstract class Module {
-  /// Base constructor for modules. Each module which extends Module class must
-  /// invoke super constructor. Parameter [instances] is necessary in case when
-  /// module contains variables not used in [Manage.dependsOn] parameter. For such variables
-  /// we should invoke them some where else and [instances] parameter is such place.
-  ///
-  /// For example:
-  /// ```dart
-  ///
-  /// class AppModule extends Module {
-  ///
-  ///   AppModule() : super({dependency2})
-  ///
-  ///   static final dependency1 = Manage(Dependency1.new);
-  ///   static final dependency2 = Manage(Dependency1.new, dependsOn: [dependency1]);
-  /// }
-  /// ```
-  ///
-  /// In example above we have two dependencies provided by Manage instances.
-  /// Because Manage instances assign to static variables its initialization performed
-  /// on first access. This mean that dependency1 will be initialized when somebody
-  /// use dependency2. That's why we should provide dependency2 as argument at construction of
-  /// AppModule. So, at creation of AppModule we access dependency2 instance which will lead
-  /// to the creation of dependency1 instance
-  const Module(Set<Manage> instances);
+enum ScopeType {
+  unique,
+  cached,
+  singleton,
 }
+
+mixin Provider<T extends Object> {
+  T call();
+}
+
+Type nonNullableTypeOf<T>(T? object) => T;
 
 /// Class used to register specific Type and instance factory for it. This class
 /// must be used together with static variable. Instance of this class should be created
 /// only once for concrete type [T].
-class Manage<T extends Object> {
-  /// Hold binding between instance of Manage class and its generic type.
-  static final _typeBindings = Expando<Manage>();
+class Manage<T extends Object> with Provider<T> {
+  static I resolve<I>() {
+    final invocationZone = Zone.current;
+    final dependencyInstance = invocationZone[I];
+    if (dependencyInstance is I) {
+      return dependencyInstance;
+    }
+    throw StateError(
+      'Instance of type $I is not provided. '
+      'Check that Manage.dependsOn contains variable of Manage<$I>',
+    );
+  }
 
-  /// Provides instance of [Manage] for [Type] parameter [type].
-  ///
-  /// Method can return null if [_typeBindings] does not contain [Manage] instance for
-  /// provided [type]
-  static Manage? manageInstance(Type type) => _typeBindings[type];
+  Type get managedType => T;
 
-  /// Drop [Manage] instance registered for [Type] provided in parameter [type]
-  @visibleForTesting
-  static void resetTypeInstance(Type type) => _typeBindings[type] = null;
-
-  /// Hold pair of class reference and and instances created using [_factory]
-  ///
-  /// Such binding is necessary because instances of type [T] provided from methods
-  /// and we cant store them by default. This mean that without correct storage mechanism
-  /// every time user call method which provide instance of type [T] he will receive
-  /// new instance and such behaviour is incorrect. Expando type allow us store
-  /// binding between some instance and instance of type [T] while some instance
-  /// live in memory
-  final _instanceBindings = Expando<T>();
-
-  ///
-  final Scope _scope;
+  /// scope where instances of [T] is stored
+  final ScopeType scope;
 
   /// Factory which provide instances of type [T]
   final Factory<T> _factory;
+
+  final OnNewInstance<T>? _onNewInstance;
 
   /// This variable used in test when we want to mock type [T] with out changing
   /// behaviour of dependency injection
   T? _mock;
 
+  final List<Manage> _dependencies;
+
+  List<Manage> get dependencies => UnmodifiableListView(_dependencies);
+
   Manage(
     this._factory, {
-    Scope? scope,
-    List? dependsOn,
-  }) : _scope = scope ?? Scope.unique {
-    _typeBindings[T] = this;
+    this.scope = ScopeType.unique,
+    List<Manage>? dependsOn,
+    OnNewInstance<T>? onNewInstance,
+  })  : _onNewInstance = onNewInstance,
+        _dependencies = dependsOn ?? [];
+
+  Scope _resolveScope() {
+    return switch (scope) {
+      ScopeType.unique => Scope.unique,
+      ScopeType.cached => Scope.cached,
+      ScopeType.singleton => Scope.singleton,
+    };
   }
 
   /// Returns instance of type [T]
   ///
   /// If mock is provided using [mock] method when instance from [_mock] variable
   /// will be returned else we receive instance from [_scope].
-  T call() {
-    return _mock ?? _scope.provideUsing(_factory);
+  @override
+  T call([covariant Params? params]) {
+    if (_mock != null) {
+      return _mock!;
+    }
+    final zone = Zone.current;
+    return zone.fork(
+      zoneValues: {
+        for (final dependency in _dependencies)
+          dependency.managedType: dependency(zone[dependency.managedType]),
+      },
+    ).run(provide);
   }
 
-  /// Bind provided instance via [consumer] with instance of type [T] and when
-  /// return instance of type [T]
-  T _bind(Object consumer) {
-    var instance = _instanceBindings[consumer];
-    if (instance == null) {
-      instance = call();
-      _instanceBindings[consumer] = instance;
+  @protected
+  T callForGenerated() {
+    if (_mock != null) {
+      return _mock!;
     }
-    return instance;
+    return provide();
+  }
+
+  @protected
+  T provide() {
+    final _scope = _resolveScope();
+    return _scope.provideUsing(
+      _factory,
+      onNewInstance: (instance) {
+        if (instance is T) {
+          _onNewInstance?.call(instance);
+        }
+      },
+    );
   }
 
   /// Register mock instance which can be used in tests
@@ -162,6 +132,79 @@ class Manage<T extends Object> {
   @visibleForTesting
   void resetMock() {
     _mock = null;
+  }
+}
+
+extension ManageExt<T extends Object> on Manage<T> {
+  Manage<S> as<S extends Object>() {
+    final factory = _factory;
+    if (factory is Factory<S>) {
+      return AsManage._(this as Manage<S>);
+    }
+
+    throw StateError('Type $T cant be treated as $S');
+  }
+}
+
+class AsManage<S extends Object> implements Manage<S> {
+  AsManage._(this._delegate);
+
+  final Manage<S> _delegate;
+
+  @override
+  S? get _mock {
+    return _delegate._mock;
+  }
+
+  @override
+  set _mock(S? newValue) {
+    throw UnsupportedError('message');
+  }
+
+  Scope _resolveScope() {
+    return _delegate._resolveScope();
+  }
+
+  @override
+  List<Manage<Object>> get _dependencies => _delegate._dependencies;
+
+  @override
+  Factory<S> get _factory => _delegate._factory;
+
+  @override
+  OnNewInstance<S>? get _onNewInstance => null;
+
+  @override
+  ScopeType get scope => _delegate.scope;
+
+  @override
+  S call([covariant Params? params]) {
+    return _delegate.call(params);
+  }
+
+  S provide() {
+    return _delegate.provide();
+  }
+
+  @override
+  Type get managedType => S;
+
+  @override
+  void mock(S instance) {
+    _mock = instance;
+  }
+
+  @override
+  void resetMock() {
+    _delegate.resetMock();
+  }
+
+  @override
+  List<Manage<Object>> get dependencies => _delegate.dependencies;
+
+  @override
+  S callForGenerated() {
+    return _delegate.callForGenerated();
   }
 }
 
@@ -185,7 +228,7 @@ abstract class Scope {
   /// Created instance will be returned. Else, previously created instance will be returned.
   /// For [cached] implementation the behaviour is similar to [singleton] implementation.
   /// The main difference is that the [cached] implementation internal map can be cleared.
-  dynamic provideUsing(Factory factory);
+  dynamic provideUsing(Factory factory, {OnNewInstance? onNewInstance});
 
   /// Drop previously created instances
   ///
@@ -196,8 +239,13 @@ abstract class Scope {
 
 class _UniqueScope implements Scope {
   @override
-  dynamic provideUsing(Factory factory) {
-    return factory();
+  dynamic provideUsing(
+    Factory factory, {
+    OnNewInstance? onNewInstance,
+  }) {
+    final instance = factory();
+    onNewInstance?.call(instance);
+    return instance;
   }
 
   @override
@@ -208,12 +256,16 @@ class _SingletonScope implements Scope {
   final Map<Factory, Object> _instances = {};
 
   @override
-  dynamic provideUsing(Factory factory) {
+  dynamic provideUsing(
+    Factory factory, {
+    OnNewInstance? onNewInstance,
+  }) {
     if (_instances.containsKey(factory)) {
       return _instances[factory];
     }
     final instance = factory();
     _instances[factory] = instance;
+    onNewInstance?.call(instance);
     return instance;
   }
 
@@ -225,12 +277,16 @@ class _CachedScope implements Scope {
   final Map<Factory, Object> _instances = {};
 
   @override
-  dynamic provideUsing(Factory factory) {
+  dynamic provideUsing(
+    Factory factory, {
+    OnNewInstance? onNewInstance,
+  }) {
     if (_instances.containsKey(factory)) {
       return _instances[factory];
     }
     final instance = factory();
     _instances[factory] = instance;
+    onNewInstance?.call(instance);
     return instance;
   }
 
