@@ -66,26 +66,13 @@ The factory you provide at construction of `Manage` instance can be class
 constructor
 
 ```dart
-Manage
-(
-Service
-.
-new
-);
+Manage(Service.new);
 ```
 
 or you can provide closure
 
 ```dart
-Manage
-(
-(
-)
-=>
-Service
-(
-)
-);
+Manage(()=>Service());
 ```
 
 In simple cases the generic type for Manage instance will be inferred
@@ -93,15 +80,7 @@ automatically. But in some cases you should define generic parameter
 explicitly.
 
 ```dart
-Manage<Service>
-(
-(
-)
-=>
-Service
-(
-)
-);
+Manage<Service>(()=>Service());
 ```
 
 3. Use some static variables in super constructor
