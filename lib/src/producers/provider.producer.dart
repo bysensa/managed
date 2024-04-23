@@ -22,8 +22,7 @@ class ProviderProducer extends Producer {
 
   Reference get _on => Reference('Manage<${managedType.displayName}>');
 
-  DartObject? get annotationManagedType =>
-      checkerManagedType.firstAnnotationOfExact(
+  DartObject? get annotationManagedType => checkerManagedType.firstAnnotationOfExact(
         managedType,
       );
 
@@ -48,13 +47,13 @@ class ProviderProducer extends Producer {
 
   Method _constructorMethod() {
     final positional = parameters.where((p) => p.isPositional).map((p) {
-      return p.type.element!.isManaged
+      return p.type.element?.isManaged ?? false
           ? refer('Manage.resolve()')
           : refer('zone[#${p.name}]');
     }).toList();
 
     final named = parameters.where((p) => p.isNamed).map((p) {
-      return p.type.element!.isManaged
+      return p.type.element?.isManaged ?? false
           ? MapEntry(p.name, refer('Manage.resolve()'))
           : MapEntry(p.name, refer('zone[#${p.name}]'));
     });
@@ -115,8 +114,7 @@ class ProviderProducer extends Producer {
             .where((p) => p.hasNotUniqueScope)
             .map((p) => p.typeElement)
             .whereType<ClassElement>()
-            .map((p) =>
-                Code('assert(${p.providerMixinName}.params != null,"");')),
+            .map((p) => Code('assert(${p.providerMixinName}.params != null,"");')),
         Code('return _provider;'),
       ]));
   }
@@ -146,14 +144,11 @@ class ProviderProducer extends Producer {
       )
       ..body = Block.of([
         Code('final ZoneValues values = {};'),
-        Code(
-            'final deps = {for (final dep in dependencies) dep.managedType: dep};'),
+        Code('final deps = {for (final dep in dependencies) dep.managedType: dep};'),
         managedType.isManaged && managedType.hasNotUniqueScope
-            ? Code(
-                '${managedType.providerMixinName}.params!.inject(values, deps);')
+            ? Code('${managedType.providerMixinName}.params!.inject(values, deps);')
             : Code('params?.inject(values, deps);'),
-        Code(
-            'values.addEntries(deps.entries.map((e) => MapEntry(e.key, e.value())));'),
+        Code('values.addEntries(deps.entries.map((e) => MapEntry(e.key, e.value())));'),
         Code('return runZoned(() {'),
         Code('  return callForGenerated();'),
         Code('}, zoneValues: values);'),

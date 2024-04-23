@@ -15,8 +15,7 @@ extension ElementExt on Element {
       return null;
     }
     final reader = ConstantReader(annotation);
-    final enumIndex =
-        reader.peek('scope')!.objectValue.getField('index')!.toIntValue()!;
+    final enumIndex = reader.peek('scope')!.objectValue.getField('index')!.toIntValue()!;
     final scope = ScopeType.values[enumIndex];
 
     return ManagedType(scope: scope);
@@ -43,9 +42,8 @@ extension ElementExt on Element {
 
 extension ClassElementExt on ClassElement {
   ConstructorElement get targetConstructor {
-    final constructor = constructors
-        .where((constructor) => constructor.name.isEmpty)
-        .firstOrNull;
+    final constructor =
+        constructors.where((constructor) => constructor.name.isEmpty).firstOrNull;
     if (constructor == null) {
       throw Exception(
           'Class annotated with ManagedType must provide constructor without name');
@@ -79,20 +77,19 @@ extension ConstructorElementExt on ConstructorElement {
 }
 
 extension ParameterElementExt on ParameterElement {
-  Element get typeElement => type.element!;
+  Element? get typeElement => type.element;
 
-  bool get isManaged => typeElement.isManaged;
+  bool get isManaged => typeElement?.isManaged ?? false;
 
   bool get hasNotUniqueScope => !hasUniqueScope;
 
-  bool get hasUniqueScope => typeElement.managedType?.scope == ScopeType.unique;
+  bool get hasUniqueScope => typeElement?.managedType?.scope == ScopeType.unique;
 
   bool get hasNotCachedScope => !hasCachedScope;
 
-  bool get hasCachedScope => typeElement.managedType?.scope == ScopeType.cached;
+  bool get hasCachedScope => typeElement?.managedType?.scope == ScopeType.cached;
 
   bool get hasNotSingletonScope => !hasSingletonScope;
 
-  bool get hasSingletonScope =>
-      typeElement.managedType?.scope == ScopeType.singleton;
+  bool get hasSingletonScope => typeElement?.managedType?.scope == ScopeType.singleton;
 }

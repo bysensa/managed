@@ -57,10 +57,9 @@ class ParamsProducer extends Producer {
       final field = Field(
         (b) => b
           ..name = param.name
-          ..type = paramTypeElement.isNotManaged
+          ..type = paramTypeElement?.isNotManaged ?? false
               ? Reference(param.type.getDisplayString(withNullability: true))
-              : Reference(
-                  '${param.typeElement.displayName}Params$nullabilitySuffix')
+              : Reference('${param.typeElement?.displayName}Params$nullabilitySuffix')
           ..modifier = FieldModifier.final$,
       );
       yield field;
