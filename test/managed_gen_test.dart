@@ -1,6 +1,5 @@
 import 'package:build_test/build_test.dart';
 import 'package:managed_gen/managed_gen.dart';
-import 'package:managed_gen/src/extensions/element.extension.dart';
 import 'package:managed_gen/src/extensions/spec.extension.dart';
 import 'package:managed_gen/src/producers/extended.manage.producer.dart';
 import 'package:managed_gen/src/producers/params.producer.dart';
@@ -31,7 +30,7 @@ void main() {
   });
 
   test('should provide', () async {
-    final visitor = ManagedTypeCollector();
+    final _ = ManagedTypeCollector();
     final mock = 'managed_gen|test/_files/simple.dart';
     final lib = await resolveSources(
       {

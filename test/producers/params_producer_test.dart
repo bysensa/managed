@@ -1,7 +1,3 @@
-import 'package:code_builder/code_builder.dart';
-import 'package:managed_gen/src/producers/params.producer.dart';
-import 'package:test/scaffolding.dart';
-
 void main() {
   // test('description', () {
   //   final prod = ParamsProducer(

@@ -1,6 +1,5 @@
 import 'package:analyzer/dart/element/element.dart';
 import 'package:code_builder/code_builder.dart';
-import 'package:managed_gen/src/model/managed_type_meta.dart';
 
 import '../producers.dart';
 

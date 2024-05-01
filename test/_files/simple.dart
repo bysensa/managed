@@ -1,6 +1,5 @@
 library example;
 
-import 'package:glob/glob.dart';
 import 'package:managed/annotations.dart';
 
 @ManagedType(scope: ScopeType.singleton)

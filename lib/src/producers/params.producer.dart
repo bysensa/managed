@@ -1,10 +1,8 @@
 import 'package:analyzer/dart/element/element.dart';
-import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:code_builder/code_builder.dart';
 import 'package:managed_gen/managed_gen.dart';
 import 'package:managed_gen/src/extensions/dart_type.extension.dart';
 import 'package:managed_gen/src/extensions/element.extension.dart';
-import 'package:managed_gen/src/model/managed_type_meta.dart';
 
 class ParamsProducer extends Producer {
   ParamsProducer({
@@ -59,7 +57,8 @@ class ParamsProducer extends Producer {
           ..name = param.name
           ..type = paramTypeElement?.isNotManaged ?? false
               ? Reference(param.type.getDisplayString(withNullability: true))
-              : Reference('${param.typeElement?.displayName}Params$nullabilitySuffix')
+              : Reference(
+                  '${param.typeElement?.displayName}Params$nullabilitySuffix')
           ..modifier = FieldModifier.final$,
       );
       yield field;

@@ -1,8 +1,5 @@
-import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
-import 'package:code_builder/code_builder.dart';
 import 'package:managed/annotations.dart';
-import 'package:managed_gen/src/model/managed_type_meta.dart';
 import 'package:recase/recase.dart';
 import 'package:source_gen/source_gen.dart';
 
@@ -15,7 +12,8 @@ extension ElementExt on Element {
       return null;
     }
     final reader = ConstantReader(annotation);
-    final enumIndex = reader.peek('scope')!.objectValue.getField('index')!.toIntValue()!;
+    final enumIndex =
+        reader.peek('scope')!.objectValue.getField('index')!.toIntValue()!;
     final scope = ScopeType.values[enumIndex];
 
     return ManagedType(scope: scope);
@@ -42,8 +40,9 @@ extension ElementExt on Element {
 
 extension ClassElementExt on ClassElement {
   ConstructorElement get targetConstructor {
-    final constructor =
-        constructors.where((constructor) => constructor.name.isEmpty).firstOrNull;
+    final constructor = constructors
+        .where((constructor) => constructor.name.isEmpty)
+        .firstOrNull;
     if (constructor == null) {
       throw Exception(
           'Class annotated with ManagedType must provide constructor without name');
@@ -83,13 +82,16 @@ extension ParameterElementExt on ParameterElement {
 
   bool get hasNotUniqueScope => !hasUniqueScope;
 
-  bool get hasUniqueScope => typeElement?.managedType?.scope == ScopeType.unique;
+  bool get hasUniqueScope =>
+      typeElement?.managedType?.scope == ScopeType.unique;
 
   bool get hasNotCachedScope => !hasCachedScope;
 
-  bool get hasCachedScope => typeElement?.managedType?.scope == ScopeType.cached;
+  bool get hasCachedScope =>
+      typeElement?.managedType?.scope == ScopeType.cached;
 
   bool get hasNotSingletonScope => !hasSingletonScope;
 
-  bool get hasSingletonScope => typeElement?.managedType?.scope == ScopeType.singleton;
+  bool get hasSingletonScope =>
+      typeElement?.managedType?.scope == ScopeType.singleton;
 }
