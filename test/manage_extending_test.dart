@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:managed/annotations.dart';
 import 'package:managed/managed.dart';
-import 'package:test/expect.dart';
 import 'package:test/scaffolding.dart';
 
 @ManagedType(scope: ScopeType.cached)

@@ -3,7 +3,6 @@ library managed;
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:managed/annotations.dart';
 import 'package:meta/meta.dart';
 
 typedef Factory<T> = T Function();
