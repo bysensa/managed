@@ -1,0 +1,14 @@
+name: managed
+description: Library for dependency management
+version: 1.1.0
+homepage:
+
+environment:
+  sdk: ^3.6.0
+
+resolution: workspace
+
+dependencies:
+
+dev_dependencies:
+  test: ^1.25.2

@@ -1,0 +1,14 @@
+builders:
+  managed_builder:
+    import: "package:managed_gen/build.dart"
+    builder_factories: [ "generateManaged" ]
+    build_extensions: { ".dart": [ ".managed.dart" ] }
+    auto_apply: dependents
+    build_to: cache
+    runs_before: [ "managed_gen|module_builder" ]
+  module_builder:
+    import: "package:managed_gen/build.dart"
+    builder_factories: [ "generateModule" ]
+    build_extensions: { ".dart": [ ".module.dart" ] }
+    auto_apply: dependents
+    build_to: source
