@@ -1,0 +1,16 @@
+name: managed_notebook_example
+description: An offline notebook demonstrating the managed dependency lifecycle.
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+resolution: workspace
+
+dependencies:
+  managed: ^2.0.0-dev.1
+
+dev_dependencies:
+  build_runner: ^2.4.9
+  managed_gen: ^0.0.2-dev.1
+  test: ^1.25.2

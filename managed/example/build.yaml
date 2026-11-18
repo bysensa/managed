@@ -1,0 +1,6 @@
+targets:
+  $default:
+    builders:
+      managed_gen|managed_builder:
+        generate_for:
+          - lib/markdown.dart

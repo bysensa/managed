@@ -46,6 +46,9 @@ void main() {
 
     print(extendedManageProd.produce().formattedString());
     print(paramsProd.produce().formattedString());
-    print(prod.produce().formattedString());
+    expect(prod.produce().formattedString(), contains('super.call(params)'));
+    final cached = ProviderProducer(managedType: lib.getClass('Cached')!);
+    expect(cached.produce().formattedString(),
+        contains('super.call(CachedProvider.params!)'));
   });
 }

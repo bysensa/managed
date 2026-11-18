@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:managed/annotations.dart';
 import 'package:managed/managed.dart';
-import 'package:test/scaffolding.dart';
+import 'package:test/test.dart';
 
 @ManagedType(scope: ScopeType.cached)
 class Empty {
@@ -129,7 +129,8 @@ class SomeParams extends Params {
     values[#number] = number;
     values[#flag] = flag;
     values[#middle] = middle;
-    values[middle.targetType] = dependencies[middle.targetType]?.call(middle);
+    values[middle.targetType] =
+        dependencies.remove(middle.targetType)?.call(middle);
   }
 
   @override
@@ -149,14 +150,7 @@ mixin SomeProvider on Manage<Some> {
   }
 
   @override
-  Some call([covariant SomeParams? params]) {
-    final ZoneValues values = {};
-    final deps = {for (final dep in dependencies) dep.managedType: dep};
-    params?.inject(values, deps);
-    return runZoned(() {
-      return callForGenerated();
-    }, zoneValues: values);
-  }
+  Some call([covariant SomeParams? params]) => super.call(params);
 }
 
 abstract class Module {
@@ -177,6 +171,34 @@ abstract class Module {
 }
 
 void main() {
+  test('a generated provider binds parameters once per cached lifetime',
+      () async {
+    final source = Manage.source<String>();
+    final disposed = <Object>[];
+    final middle = ManageMiddle(MiddleProvider.managed,
+        dependsOn: [Module.empty], onDispose: disposed.add);
+    final some = ManageSome(SomeProvider.managed,
+        scope: ScopeType.cached,
+        dependsOn: [source, middle],
+        onDispose: disposed.add);
+    SomeParams params(String text) => SomeParams(
+        number: 42,
+        flag: true,
+        middle: MiddleParams(empty: EmptyParams(text: text)));
+
+    await source.set('alice');
+    final first = some(params('hello'));
+    expect(first.middle.empty.text, 'hello');
+    expect(some(params('ignored on a cache hit')), same(first));
+    await source.clear();
+    expect(disposed, [first, first.middle]);
+    await source.set('bob');
+    final next = some(params('world'));
+    expect(next, isNot(same(first)));
+    expect(next.middle.empty.text, 'world');
+    await source.clear();
+  });
+
   test('should provide', () {
     final params = SomeParams(
       number: 1,

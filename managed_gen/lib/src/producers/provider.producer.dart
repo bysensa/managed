@@ -22,7 +22,8 @@ class ProviderProducer extends Producer {
 
   Reference get _on => Reference('Manage<${managedType.displayName}>');
 
-  DartObject? get annotationManagedType => checkerManagedType.firstAnnotationOfExact(
+  DartObject? get annotationManagedType =>
+      checkerManagedType.firstAnnotationOfExact(
         managedType,
       );
 
@@ -114,7 +115,8 @@ class ProviderProducer extends Producer {
             .where((p) => p.hasNotUniqueScope)
             .map((p) => p.typeElement)
             .whereType<ClassElement>()
-            .map((p) => Code('assert(${p.providerMixinName}.params != null,"");')),
+            .map((p) =>
+                Code('assert(${p.providerMixinName}.params != null,"");')),
         Code('return _provider;'),
       ]));
   }
@@ -130,6 +132,9 @@ class ProviderProducer extends Producer {
   }
 
   Method _overrideCallMethod() {
+    final params = managedType.isManaged && managedType.hasNotUniqueScope
+        ? '${managedType.providerMixinName}.params!'
+        : 'params';
     final builder = MethodBuilder()
       ..name = 'call'
       ..returns = Reference(managedType.displayName)
@@ -142,17 +147,8 @@ class ProviderProducer extends Producer {
             ..covariant = true,
         ),
       )
-      ..body = Block.of([
-        Code('final ZoneValues values = {};'),
-        Code('final deps = {for (final dep in dependencies) dep.managedType: dep};'),
-        managedType.isManaged && managedType.hasNotUniqueScope
-            ? Code('${managedType.providerMixinName}.params!.inject(values, deps);')
-            : Code('params?.inject(values, deps);'),
-        Code('values.addEntries(deps.entries.map((e) => MapEntry(e.key, e.value())));'),
-        Code('return runZoned(() {'),
-        Code('  return callForGenerated();'),
-        Code('}, zoneValues: values);'),
-      ]);
+      ..lambda = true
+      ..body = Code('super.call($params)');
     return builder.build();
   }
 }

@@ -6,4 +6,5 @@ environment:
 
 workspace:
   - managed
+  - managed/example
   - managed_gen

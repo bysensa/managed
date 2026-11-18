@@ -1,6 +1,6 @@
 name: managed
 description: Library for dependency management
-version: 1.1.0
+version: 2.0.0-dev.1
 homepage:
 
 environment:
@@ -9,6 +9,7 @@ environment:
 resolution: workspace
 
 dependencies:
+  meta: ^1.12.0
 
 dev_dependencies:
   test: ^1.25.2

@@ -25,12 +25,10 @@ start using the package.
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
-
-```dart
-const like = 'sample';
-```
+The [offline notebook example](../managed/example/README.md) generates a
+Markdown template provider from three [annotated classes](../managed/example/lib/markdown.dart).
+It passes a heading per export and reuses a cached style. The example includes
+the generated code and the command to rebuild it.
 
 ## Additional information
 

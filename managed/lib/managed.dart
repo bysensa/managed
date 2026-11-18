@@ -1,13 +1,17 @@
 library managed;
 
 import 'dart:async';
-import 'dart:collection';
 
 import 'package:meta/meta.dart';
+
+part 'src/lifecycle.dart';
+part 'src/source.dart';
+part 'src/scope.dart';
 
 typedef Factory<T> = T Function();
 typedef ManagedBy = Set<Manage>;
 typedef OnNewInstance<T> = void Function(T);
+typedef OnDispose<T> = FutureOr<void> Function(T);
 typedef ZoneValues = Map<Object?, Object?>;
 
 abstract class Params {
@@ -28,12 +32,23 @@ mixin Provider<T extends Object> {
 
 Type nonNullableTypeOf<T>(T? object) => T;
 
-/// Class used to register specific Type and instance factory for it. This class
-/// must be used together with static variable. Instance of this class should be created
-/// only once for concrete type [T].
+/// A callable registration for [T]. Top-level or static fields let modules
+/// refer to the same registration and its lifetime from anywhere in the app.
 class Manage<T extends Object> with Provider<T> {
+  /// Creates an initially empty provider for an externally supplied value.
+  /// [sameIdentity] defaults to [identical]. A refresh of the same identity
+  /// publishes the latest value and preserves already constructed dependents.
+  /// [onDispose] receives the last value of an outgoing identity after its
+  /// dependents have been released.
+  static ManageSource<S> source<S extends Object>({
+    bool Function(S previous, S next)? sameIdentity,
+    OnDispose<S>? onDispose,
+  }) =>
+      ManageSource._(_SourceState(sameIdentity ?? identical, onDispose));
+
   static I resolve<I>() {
     final invocationZone = Zone.current;
+    _Resolution.current?.check();
     final dependencyInstance = invocationZone[I];
     if (dependencyInstance is I) {
       return dependencyInstance;
@@ -46,58 +61,105 @@ class Manage<T extends Object> with Provider<T> {
 
   Type get managedType => T;
 
-  /// scope where instances of [T] is stored
+  /// Controls how instances of [T] are reused.
   final ScopeType scope;
 
-  /// Factory which provide instances of type [T]
   final Factory<T> _factory;
 
   final OnNewInstance<T>? _onNewInstance;
+  final OnDispose<T>? _onDispose;
+  _Lifetime? _overrideChanges;
 
-  /// This variable used in test when we want to mock type [T] with out changing
-  /// behaviour of dependency injection
   T? _mock;
 
   final List<Manage> _dependencies;
+  late final Object _cacheKey = _dependencies.isEmpty
+      ? _factory
+      : _FactoryBinding(_factory, _dependencies);
 
-  List<Manage> get dependencies => UnmodifiableListView(_dependencies);
+  List<Manage> get dependencies => _dependencies;
 
+  /// [dependsOn] supplies factory inputs and propagates invalidation.
+  /// [onDispose] releases a managed instance before its inputs are released.
   Manage(
     this._factory, {
     this.scope = ScopeType.unique,
     List<Manage>? dependsOn,
     OnNewInstance<T>? onNewInstance,
+    OnDispose<T>? onDispose,
   })  : _onNewInstance = onNewInstance,
-        _dependencies = dependsOn ?? [];
+        _onDispose = onDispose,
+        _dependencies = List.unmodifiable(dependsOn ?? const []);
 
-  Scope _resolveScope() {
+  _InstanceScope get _storage {
     return switch (scope) {
-      ScopeType.unique => Scope.unique,
-      ScopeType.cached => Scope.cached,
-      ScopeType.singleton => Scope.singleton,
+      ScopeType.unique => Scope._unique,
+      ScopeType.cached => Scope._cached,
+      ScopeType.singleton => Scope._singleton,
     };
   }
 
-  /// Returns instance of type [T]
-  ///
-  /// If mock is provided using [mock] method when instance from [_mock] variable
-  /// will be returned else we receive instance from [_scope].
+  Manage get _canonical => this;
+
+  void _collectLifetimes(Set<_Lifetime> result, Set<Manage> visited) {
+    if (!visited.add(this)) return;
+    final entry = _storage._instances?[_cacheKey];
+    if (entry != null) {
+      result.addAll(entry.lifetimes);
+      return;
+    }
+    final reset = _storage._reset;
+    if (reset != null) result.add(reset);
+    for (final dependency in _dependencies) {
+      final provider = dependency._canonical;
+      result
+          .add(provider._overrideChanges ??= _Lifetime(ownsTransients: false));
+      if (provider._mock == null) provider._collectLifetimes(result, visited);
+    }
+  }
+
+  _Resolution _resolution() {
+    final lifetimes = <_Lifetime>{};
+    _collectLifetimes(lifetimes, {});
+    // A transient created for a managed consumer belongs to its lifetime.
+    final parent = _Resolution.current;
+    final inherits =
+        scope == ScopeType.unique && parent != null && parent.building;
+    if (inherits) lifetimes.addAll(parent.generations.keys);
+    final ownsTransients = scope != ScopeType.unique ||
+        (inherits && parent.ownsTransients) ||
+        lifetimes.any((lifetime) => lifetime.ownsTransients);
+    return _Resolution(this, lifetimes, ownsTransients);
+  }
+
+  /// Returns the instance, constructing its dependencies on a cache miss.
   @override
   T call([covariant Params? params]) {
-    if (_mock != null) {
-      return _mock!;
-    }
-    final zone = Zone.current;
-    return zone.fork(
-      zoneValues: {
-        for (final dependency in _dependencies)
-          dependency.managedType: dependency(zone[dependency.managedType]),
-      },
-    ).run(provide);
+    _Resolution.current?.check();
+    if (_mock != null) return _mock!;
+    if (_storage._instances?.containsKey(_cacheKey) ?? false) return provide();
+    final resolution = _resolution();
+    return resolution.run(() {
+      final ZoneValues values = {};
+      Iterable<Manage> remaining = _dependencies;
+      if (params != null) {
+        final byType = {for (final dep in _dependencies) dep.managedType: dep};
+        params.inject(values, byType);
+        remaining = byType.values;
+      }
+      for (final dependency in remaining) {
+        final argument = Zone.current[dependency.managedType];
+        values[dependency.managedType] =
+            dependency(argument is Params ? argument : null);
+      }
+      resolution.check();
+      return runZoned(provide, zoneValues: values);
+    });
   }
 
   @protected
   T callForGenerated() {
+    _Resolution.current?.check();
     if (_mock != null) {
       return _mock!;
     }
@@ -106,31 +168,35 @@ class Manage<T extends Object> with Provider<T> {
 
   @protected
   T provide() {
-    final _scope = _resolveScope();
-    return _scope.provideUsing(
-      _factory,
-      onNewInstance: (instance) {
-        if (instance is T) {
-          _onNewInstance?.call(instance);
-        }
-      },
-    );
+    final current = _Resolution.current;
+    current?.check();
+    final entry = _storage._instances?[_cacheKey];
+    if (entry != null) return entry.value as T;
+    final resolution =
+        identical(current?.provider, this) ? current! : _resolution();
+    return resolution.run(() => _storage._create(
+          _cacheKey,
+          _factory,
+          resolution.ownsTransients ? resolution.generations.keys.toSet() : {},
+          _onNewInstance,
+          _onDispose,
+        ));
   }
 
-  /// Register mock instance which can be used in tests
-  ///
-  /// This method must be used in tests only
+  /// Overrides this registration and invalidates consumers of its previous value.
   @visibleForTesting
-  void mock(T instance) {
+  Future<void> mock(T instance) {
+    if (identical(_mock, instance)) return Future.value();
     _mock = instance;
+    return _overrideChanges?.invalidate() ?? Future.value();
   }
 
-  /// Drop previously provided mock instance.
-  ///
-  /// This method must be used in tests only
+  /// Removes a test override and invalidates consumers of the mock.
   @visibleForTesting
-  void resetMock() {
+  Future<void> resetMock() {
+    if (_mock == null) return Future.value();
     _mock = null;
+    return _overrideChanges?.invalidate() ?? Future.value();
   }
 }
 
@@ -145,152 +211,29 @@ extension ManageExt<T extends Object> on Manage<T> {
   }
 }
 
-class AsManage<S extends Object> implements Manage<S> {
-  AsManage._(this._delegate);
+class AsManage<S extends Object> extends Manage<S> {
+  AsManage._(this._delegate)
+      : super(_delegate._factory,
+            scope: _delegate.scope, dependsOn: _delegate.dependencies);
 
   final Manage<S> _delegate;
 
   @override
-  S? get _mock {
-    return _delegate._mock;
-  }
+  Manage get _canonical => _delegate._canonical;
 
   @override
-  set _mock(S? newValue) {
-    throw UnsupportedError('message');
-  }
-
-  Scope _resolveScope() {
-    return _delegate._resolveScope();
-  }
+  S call([covariant Params? params]) => _delegate.call(params);
 
   @override
-  List<Manage<Object>> get _dependencies => _delegate._dependencies;
+  S provide() => _delegate.provide();
 
   @override
-  Factory<S> get _factory => _delegate._factory;
+  S callForGenerated() => _delegate.callForGenerated();
 
   @override
-  OnNewInstance<S>? get _onNewInstance => null;
+  Future<void> mock(S instance) =>
+      throw UnsupportedError('Mock the original registration.');
 
   @override
-  ScopeType get scope => _delegate.scope;
-
-  @override
-  S call([covariant Params? params]) {
-    return _delegate.call(params);
-  }
-
-  S provide() {
-    return _delegate.provide();
-  }
-
-  @override
-  Type get managedType => S;
-
-  @override
-  void mock(S instance) {
-    _mock = instance;
-  }
-
-  @override
-  void resetMock() {
-    _delegate.resetMock();
-  }
-
-  @override
-  List<Manage<Object>> get dependencies => _delegate.dependencies;
-
-  @override
-  S callForGenerated() {
-    return _delegate.callForGenerated();
-  }
-}
-
-/// This class used to store instances of dependencies.
-///
-/// There are 3 different implementation of [Scope] provided out of the box.
-/// The [unique] implementation provide new instance every time. The [singleton]
-/// implementation provide new instance of specific type only once. The [cached]
-/// implementation provide same instance of specific type while not reset.
-abstract class Scope {
-  static final Scope unique = _UniqueScope();
-  static final Scope singleton = _SingletonScope();
-  static final Scope cached = _CachedScope();
-
-  /// Returns instance created using [factory]
-  ///
-  /// For [unique] implementation call to this method just invoke provided [factory]
-  /// and return instance created by this factory. For [singleton] implementation
-  /// call to this method will check there are no instances created by this [factory].
-  /// If so then new instance will be created using this [factory] and stored in internal map.
-  /// Created instance will be returned. Else, previously created instance will be returned.
-  /// For [cached] implementation the behaviour is similar to [singleton] implementation.
-  /// The main difference is that the [cached] implementation internal map can be cleared.
-  dynamic provideUsing(Factory factory, {OnNewInstance? onNewInstance});
-
-  /// Drop previously created instances
-  ///
-  /// For [unique] and [singleton] implementation call of this method has no effect.
-  /// For [cached] implementation its trigger drop of previously created instances.
-  void reset();
-}
-
-class _UniqueScope implements Scope {
-  @override
-  dynamic provideUsing(
-    Factory factory, {
-    OnNewInstance? onNewInstance,
-  }) {
-    final instance = factory();
-    onNewInstance?.call(instance);
-    return instance;
-  }
-
-  @override
-  void reset() {}
-}
-
-class _SingletonScope implements Scope {
-  final Map<Factory, Object> _instances = {};
-
-  @override
-  dynamic provideUsing(
-    Factory factory, {
-    OnNewInstance? onNewInstance,
-  }) {
-    if (_instances.containsKey(factory)) {
-      return _instances[factory];
-    }
-    final instance = factory();
-    _instances[factory] = instance;
-    onNewInstance?.call(instance);
-    return instance;
-  }
-
-  @override
-  void reset() {}
-}
-
-class _CachedScope implements Scope {
-  final Map<Factory, Object> _instances = {};
-
-  @override
-  dynamic provideUsing(
-    Factory factory, {
-    OnNewInstance? onNewInstance,
-  }) {
-    if (_instances.containsKey(factory)) {
-      return _instances[factory];
-    }
-    final instance = factory();
-    _instances[factory] = instance;
-    onNewInstance?.call(instance);
-    return instance;
-  }
-
-  @override
-  void reset() {
-    _instances.clear();
-  }
+  Future<void> resetMock() => _delegate.resetMock();
 }
