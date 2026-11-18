@@ -1,3 +1,8 @@
+## Unreleased
+
+- Allow `@ManagedType` to select a constructor and override the generated
+  binding name.
+
 ## 2.0.0-dev.1
 
 - Add `Manage.source` with configurable identity and transitive invalidation

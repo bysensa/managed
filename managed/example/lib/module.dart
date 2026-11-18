@@ -1,164 +1,157 @@
-import 'dart:async';
-import 'package:managed/managed.dart';
-import 'dart:core';
-import 'markdown.dart';
-// **************************************************************************
-// ManagedGenerator
-// **************************************************************************
+// GENERATED CODE - DO NOT MODIFY BY HAND
+import "dart:core" as _core;
+import "dart:async" as _async;
+import "package:managed/managed.dart" as _m;
+import "package:managed_notebook_example/markdown.dart" as _i1;
 
-
-
-
-
-class ManageMarkdownStyle = Manage<MarkdownStyle> with MarkdownStyleProvider;
-
-
-class MarkdownStyleParams extends Params {
-  MarkdownStyleParams({required this.headingPrefix});
-
-  final String headingPrefix;
-
-  @override
-  Type get targetType => MarkdownStyle;
-
-  @override
+class _RequiredParams extends _m.Params {
+  _RequiredParams(this.targetType, this.name);
+  @_core.override
+  final _core.Type targetType;
+  final _core.String name;
+  @_core.override
   void inject(
-    ZoneValues values,
-    Map<Type, Manage> dependencies,
-  ) {
-    values[#headingPrefix] = headingPrefix;
+      _m.ZoneValues values, _core.Map<_core.Type, _m.Manage> dependencies) {
+    throw _core.StateError('Provide $name when constructing $targetType.');
   }
 }
 
-
-mixin MarkdownStyleProvider on Manage<MarkdownStyle> {
-  static final _provider = ManageMarkdownStyle(
-    _managed,
-    scope: ScopeType.cached,
-    dependsOn: [],
-  );
-
-  static MarkdownStyleParams? params;
-
-  static Manage<MarkdownStyle> get provider {
-    return _provider;
-  }
-
-  static MarkdownStyle _managed() {
-    final zone = Zone.current;
-    return MarkdownStyle(headingPrefix: zone[#headingPrefix]);
-  }
-
-  @override
-  MarkdownStyle call([covariant MarkdownStyleParams? params]) =>
-      super.call(MarkdownStyleProvider.params!);
-}
-
-
-
-
-
-class ManageMarkdownHeading = Manage<MarkdownHeading>
+class ManageMarkdownHeading = _m.Manage<_i1.MarkdownHeading>
     with MarkdownHeadingProvider;
 
-
-class MarkdownHeadingParams extends Params {
+class MarkdownHeadingParams extends _m.Params {
   MarkdownHeadingParams({required this.title});
-
-  final String title;
-
-  @override
-  Type get targetType => MarkdownHeading;
-
-  @override
+  final _core.String title;
+  @_core.override
+  _core.Type get targetType => _i1.MarkdownHeading;
+  @_core.override
   void inject(
-    ZoneValues values,
-    Map<Type, Manage> dependencies,
-  ) {
-    values[#title] = title;
+      _m.ZoneValues values, _core.Map<_core.Type, _m.Manage> dependencies) {
+    values[#title] = this.title;
+    values[MarkdownHeadingParams] = () => _i1.MarkdownHeading(this.title);
   }
 }
 
-
-mixin MarkdownHeadingProvider on Manage<MarkdownHeading> {
-  static final _provider = ManageMarkdownHeading(
-    _managed,
-    scope: ScopeType.unique,
-    dependsOn: [],
-  );
-
-  static Manage<MarkdownHeading> get provider {
-    return _provider;
-  }
-
-  static MarkdownHeading _managed() {
-    final zone = Zone.current;
-    return MarkdownHeading(zone[#title]);
-  }
-
-  @override
-  MarkdownHeading call([covariant MarkdownHeadingParams? params]) =>
-      super.call(params);
+mixin MarkdownHeadingProvider on _m.Manage<_i1.MarkdownHeading> {
+  static final ManageMarkdownHeading provider = register();
+  MarkdownHeadingParams? _defaults;
+  static ManageMarkdownHeading register(
+          {MarkdownHeadingParams? params,
+          _core.List<_m.Manage> dependsOn = const [],
+          _m.OnNewInstance<_i1.MarkdownHeading>? onNewInstance,
+          _m.OnDispose<_i1.MarkdownHeading>? onDispose}) =>
+      ManageMarkdownHeading(_managed,
+          scope: _m.ScopeType.unique,
+          dependsOn: dependsOn,
+          onNewInstance: onNewInstance,
+          onDispose: onDispose)
+        .._defaults = params;
+  static _i1.MarkdownHeading _managed() =>
+      (_async.Zone.current[MarkdownHeadingParams] as _i1.MarkdownHeading
+          Function())();
+  @_core.override
+  _i1.MarkdownHeading call([covariant MarkdownHeadingParams? params]) =>
+      super.call(params ??
+          this._defaults ??
+          _RequiredParams(_i1.MarkdownHeading, "MarkdownHeadingParams"));
 }
 
+class ManageMarkdownStyle = _m.Manage<_i1.MarkdownStyle>
+    with MarkdownStyleProvider;
 
+class MarkdownStyleParams extends _m.Params {
+  MarkdownStyleParams({required this.headingPrefix});
+  final _core.String headingPrefix;
+  @_core.override
+  _core.Type get targetType => _i1.MarkdownStyle;
+  @_core.override
+  void inject(
+      _m.ZoneValues values, _core.Map<_core.Type, _m.Manage> dependencies) {
+    values[#headingPrefix] = this.headingPrefix;
+    values[MarkdownStyleParams] =
+        () => _i1.MarkdownStyle(headingPrefix: this.headingPrefix);
+  }
+}
 
+mixin MarkdownStyleProvider on _m.Manage<_i1.MarkdownStyle> {
+  static final ManageMarkdownStyle provider = register();
+  static MarkdownStyleParams? params;
+  MarkdownStyleParams? _defaults;
+  static ManageMarkdownStyle register(
+          {MarkdownStyleParams? params,
+          _core.List<_m.Manage> dependsOn = const [],
+          _m.OnNewInstance<_i1.MarkdownStyle>? onNewInstance,
+          _m.OnDispose<_i1.MarkdownStyle>? onDispose}) =>
+      ManageMarkdownStyle(_managed,
+          scope: _m.ScopeType.cached,
+          dependsOn: dependsOn,
+          onNewInstance: onNewInstance,
+          onDispose: onDispose)
+        .._defaults = params;
+  static _i1.MarkdownStyle _managed() =>
+      (_async.Zone.current[MarkdownStyleParams] as _i1.MarkdownStyle
+          Function())();
+  @_core.override
+  _i1.MarkdownStyle call([covariant MarkdownStyleParams? params]) =>
+      super.call(params ??
+          _defaults ??
+          MarkdownStyleProvider.params ??
+          _RequiredParams(_i1.MarkdownStyle, "MarkdownStyleParams"));
+}
 
-
-class ManageMarkdownTemplate = Manage<MarkdownTemplate>
+class ManageMarkdownTemplate = _m.Manage<_i1.MarkdownTemplate>
     with MarkdownTemplateProvider;
 
-
-class MarkdownTemplateParams extends Params {
-  MarkdownTemplateParams({
-    required this.heading,
-    required this.includeAuthor,
-  });
-
-  final MarkdownHeadingParams heading;
-
-  final bool includeAuthor;
-
-  @override
-  Type get targetType => MarkdownTemplate;
-
-  @override
+class MarkdownTemplateParams extends _m.Params {
+  MarkdownTemplateParams({this.heading, required this.includeAuthor});
+  final MarkdownHeadingParams? heading;
+  final _core.bool includeAuthor;
+  @_core.override
+  _core.Type get targetType => _i1.MarkdownTemplate;
+  @_core.override
   void inject(
-    ZoneValues values,
-    Map<Type, Manage> dependencies,
-  ) {
-    values[heading.targetType] =
-        dependencies.remove(heading.targetType)?.call(heading);
-    values[#includeAuthor] = includeAuthor;
+      _m.ZoneValues values, _core.Map<_core.Type, _m.Manage> dependencies) {
+    final _input0 = dependencies[_i1.MarkdownStyle]!() as _i1.MarkdownStyle;
+    values[_i1.MarkdownStyle] = _input0;
+    final _input1 =
+        dependencies[_i1.MarkdownHeading]!(this.heading) as _i1.MarkdownHeading;
+    values[_i1.MarkdownHeading] = _input1;
+    values[#includeAuthor] = this.includeAuthor;
+    dependencies.remove(_i1.MarkdownStyle);
+    dependencies.remove(_i1.MarkdownHeading);
+    values[MarkdownTemplateParams] = () => _i1.MarkdownTemplate(
+        _input0, _input1,
+        includeAuthor: this.includeAuthor);
   }
 }
 
-
-mixin MarkdownTemplateProvider on Manage<MarkdownTemplate> {
-  static final _provider = ManageMarkdownTemplate(
-    _managed,
-    scope: ScopeType.unique,
-    dependsOn: [
-      MarkdownStyleProvider.provider,
-      MarkdownHeadingProvider.provider,
-    ],
-  );
-
-  static Manage<MarkdownTemplate> get provider {
-    assert(MarkdownStyleProvider.params != null, "");
-    return _provider;
-  }
-
-  static MarkdownTemplate _managed() {
-    final zone = Zone.current;
-    return MarkdownTemplate(
-      Manage.resolve(),
-      Manage.resolve(),
-      includeAuthor: zone[#includeAuthor],
-    );
-  }
-
-  @override
-  MarkdownTemplate call([covariant MarkdownTemplateParams? params]) =>
-      super.call(params);
+mixin MarkdownTemplateProvider on _m.Manage<_i1.MarkdownTemplate> {
+  static final ManageMarkdownTemplate provider = register();
+  MarkdownTemplateParams? _defaults;
+  static ManageMarkdownTemplate register(
+          {MarkdownTemplateParams? params,
+          _core.List<_m.Manage> dependsOn = const [],
+          _m.OnNewInstance<_i1.MarkdownTemplate>? onNewInstance,
+          _m.OnDispose<_i1.MarkdownTemplate>? onDispose}) =>
+      ManageMarkdownTemplate(_managed,
+          scope: _m.ScopeType.unique,
+          dependsOn: [
+            for (final dep in <_m.Manage>[
+              MarkdownStyleProvider.provider,
+              MarkdownHeadingProvider.provider
+            ])
+              if (!dependsOn.any((d) => d.managedType == dep.managedType)) dep,
+            ...dependsOn
+          ],
+          onNewInstance: onNewInstance,
+          onDispose: onDispose)
+        .._defaults = params;
+  static _i1.MarkdownTemplate _managed() =>
+      (_async.Zone.current[MarkdownTemplateParams] as _i1.MarkdownTemplate
+          Function())();
+  @_core.override
+  _i1.MarkdownTemplate call([covariant MarkdownTemplateParams? params]) =>
+      super.call(params ??
+          this._defaults ??
+          _RequiredParams(_i1.MarkdownTemplate, "MarkdownTemplateParams"));
 }

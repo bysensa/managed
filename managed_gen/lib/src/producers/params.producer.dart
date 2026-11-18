@@ -1,107 +1,118 @@
 import 'package:analyzer/dart/element/element.dart';
 import 'package:code_builder/code_builder.dart';
-import 'package:managed_gen/managed_gen.dart';
-import 'package:managed_gen/src/extensions/dart_type.extension.dart';
-import 'package:managed_gen/src/extensions/element.extension.dart';
+
+import '../binding.dart';
+import '../producers.dart';
 
 class ParamsProducer extends Producer {
-  ParamsProducer({
-    required this.managedType,
-  }) : constructor = managedType.targetConstructor;
-
-  final ClassElement managedType;
-  final ConstructorElement constructor;
-
-  late final parameters = constructor.parameters;
-  late final targetParameters = parameters
-      .where((p) => p.hasNotSingletonScope)
-      .where((p) => p.hasNotCachedScope)
-      .toList();
+  ParamsProducer({required ClassElement managedType})
+      : this.forBinding(Binding.forElement(managedType));
+  ParamsProducer.forBinding(this.binding);
+  final Binding binding;
 
   @override
   Spec produce() {
-    final builder = ClassBuilder()
-      ..name = managedType.paramsClassName
-      ..extend = Reference('Params')
-      ..constructors.add(_constructor())
-      ..fields.addAll(_fields())
-      ..methods.addAll([_typeGetter(), _injectMethod()]);
-    return builder.build();
-  }
-
-  Constructor _constructor() {
-    final builder = ConstructorBuilder()
-      ..optionalParameters.addAll(_constructorParameters());
-    return builder.build();
-  }
-
-  Iterable<Parameter> _constructorParameters() sync* {
-    for (final param in targetParameters) {
-      final parameter = Parameter(
-        (b) => b
-          ..name = param.name
-          ..required = param.isRequired
-          ..named = true
-          ..toThis = true,
-      );
-      yield parameter;
+    final b = binding;
+    final fields = b.fields.toList();
+    final formals = <String>[];
+    final initializers = <String>[];
+    final declarations = StringBuffer();
+    for (final p in fields) {
+      if (p.sentinel) {
+        formals.add('_core.Object? ${p.name} = _omitted');
+        final omitted = '_core.identical(${p.name}, _omitted)';
+        final type = p.fieldType;
+        final value = type == '_core.Object?' || type == 'dynamic'
+            ? p.name
+            : '${p.name} as $type';
+        initializers.add('_has${p.index} = !$omitted');
+        initializers.add('${p.field} = $omitted ? null : $value');
+        declarations.writeln('final _core.bool _has${p.index};');
+        declarations.writeln('final $type ${p.field};');
+        continue;
+      }
+      final required = p.requiredInput ? 'required ' : '';
+      final defaultValue = p.dependency == null &&
+              p.literalDefault != null &&
+              p.literalDefault != 'null'
+          ? ' = ${p.literalDefault}'
+          : '';
+      final formal =
+          p.field == p.name ? 'this.${p.name}' : '${p.fieldType} ${p.name}';
+      if (p.field != p.name) initializers.add('${p.field} = ${p.name}');
+      formals.add('$required$formal$defaultValue');
+      declarations.writeln('final ${p.fieldType} ${p.field};');
     }
-  }
+    final parameters = formals.isEmpty ? '' : '{${formals.join(', ')}}';
+    final init = initializers.isEmpty ? '' : ': ${initializers.join(', ')}';
+    final out = StringBuffer()
+      ..writeln('class ${b.name}Params${b.formals} extends _m.Params {')
+      ..writeln('${b.name}Params($parameters) $init;')
+      ..write(declarations)
+      ..writeln('@_core.override _core.Type get targetType => ${b.target};')
+      ..writeln(
+          '@_core.override void inject(_m.ZoneValues values, _core.Map<_core.Type, _m.Manage> dependencies) {');
 
-  Iterable<Field> _fields() sync* {
-    for (final param in targetParameters) {
-      final nullabilitySuffix = param.type.nullabilitySuffixString;
-      final paramTypeElement = param.typeElement;
-      final field = Field(
-        (b) => b
-          ..name = param.name
-          ..type = paramTypeElement?.isNotManaged ?? false
-              ? Reference(param.type.getDisplayString(withNullability: true))
-              : Reference(
-                  '${param.typeElement?.displayName}Params$nullabilitySuffix')
-          ..modifier = FieldModifier.final$,
-      );
-      yield field;
+    final expressions = <String>[];
+    final keys = <String>{};
+    for (final p in b.inputs) {
+      if (p.dependency == null) {
+        // Custom ManageFoo factories can read the original parameter symbols.
+        // The generated constructor uses its own typed arguments below.
+        final guard = p.deferred ? 'if (${p.present}) ' : '';
+        out.writeln('${guard}values[#${p.name}] = this.${p.field};');
+        expressions.add('this.${p.field}');
+        continue;
+      }
+      keys.add(p.keyType);
+      final arg = p.hasField ? 'this.${p.field}' : '';
+      final provider = 'dependencies[${p.keyType}]!';
+      var expression = '$provider($arg) as ${p.keyType}';
+      if (p.hasField && p.nullable)
+        expression = '$arg == null ? null : $expression';
+      if (p.deferred) expression = '${p.present} ? ($expression) : null';
+      final local = '_input${p.index}';
+      out.writeln('final $local = $expression;');
+      out.writeln('values[${p.keyType}] = $local;');
+      expressions.add(local);
     }
+    // Fetch before removing: two occurrences of the same type may require
+    // different arguments, even when T and U happen to be equal at runtime.
+    for (final key in keys) {
+      out.writeln('dependencies.remove($key);');
+    }
+    final ctor = b.constructor.name.isEmpty
+        ? b.target
+        : '${b.target}.${b.constructor.name}';
+    final invocation = b.inputs.any((p) => p.deferred)
+        ? _apply(ctor, expressions)
+        : '$ctor(${b.inputs.map((p) => '${p.parameter.isNamed ? '${p.parameter.name}: ' : ''}${expressions[p.index]}').join(', ')})';
+    out.writeln('values[${b.name}Params${b.arguments}] = () => $invocation;');
+    out.writeln('}}');
+    return Code(out.toString());
   }
 
-  Method _typeGetter() {
-    final builder = MethodBuilder()
-      ..name = 'targetType'
-      ..returns = Reference('Type')
-      ..type = MethodType.getter
-      ..annotations.addAll([refer('override')])
-      ..lambda = true
-      ..body = Code(managedType.displayName);
-    return builder.build();
-  }
-
-  Method _injectMethod() {
-    final builder = MethodBuilder()
-      ..name = 'inject'
-      ..annotations.addAll([refer('override')])
-      ..requiredParameters.addAll([
-        Parameter(
-          (b) => b
-            ..name = 'values'
-            ..type = Reference('ZoneValues'),
-        ),
-        Parameter(
-          (b) => b
-            ..name = 'dependencies'
-            ..type = Reference('Map<Type, Manage>'),
-        ),
-      ])
-      ..returns = Reference('void')
-      ..body = Block.of(
-        [
-          for (final param in targetParameters)
-            param.isManaged
-                ? Code(
-                    'values[${param.name}.targetType] = dependencies.remove(${param.name}.targetType)?.call(${param.name});')
-                : Code("values[#${param.name}] = ${param.name};"),
-        ],
-      );
-    return builder.build();
+  String _apply(String constructor, List<String> expressions) {
+    final positional = <String>[];
+    final named = <String>[];
+    final defaults = <String>[];
+    for (final p in binding.inputs) {
+      final expression = expressions[p.index];
+      if (p.parameter.isNamed) {
+        final guard = p.deferred ? 'if (${p.present}) ' : '';
+        named.add('$guard#${p.parameter.name}: $expression');
+      } else if (p.deferred) {
+        positional.add('${p.present} ? $expression : _omitted');
+      } else if (p.parameter.isOptionalPositional && p.literalDefault != null) {
+        defaults.add('${positional.length}: ${p.literalDefault}');
+        positional.add(
+            '_core.identical($expression, ${p.literalDefault}) ? _omitted : $expression');
+      } else {
+        positional.add(expression);
+      }
+    }
+    final tearOff =
+        binding.constructor.name.isEmpty ? '$constructor.new' : constructor;
+    return '_invoke<${binding.target}>($tearOff, [${positional.join(', ')}], {${named.join(', ')}}, {${defaults.join(', ')}})';
   }
 }

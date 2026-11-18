@@ -1,0 +1,4 @@
+import 'package:managed/annotations.dart';
+
+@ManagedType(scope: ScopeType.singleton)
+class Item {}

@@ -1,0 +1,7 @@
+part of 'services.dart';
+
+@ManagedType(scope: ScopeType.unique)
+class InPart {
+  InPart.only({this.amount = 17});
+  final int amount;
+}

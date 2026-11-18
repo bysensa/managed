@@ -2,153 +2,79 @@ import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:code_builder/code_builder.dart';
 import 'package:managed/annotations.dart';
-import 'package:managed_gen/src/extensions/element.extension.dart';
-import 'package:managed_gen/src/producers.dart';
 import 'package:source_gen/source_gen.dart';
 
+import '../binding.dart';
+import '../dart_types.dart';
+import '../extensions/element.extension.dart';
+import '../producers.dart';
+
 class ProviderProducer extends Producer {
+  ProviderProducer({required ClassElement managedType})
+      : this.forBinding(Binding.forElement(managedType));
+  ProviderProducer.forBinding(this.binding);
+  final Binding binding;
+  ClassElement get managedType => binding.element;
   static final checkerManagedType = TypeChecker.fromRuntime(ManagedType);
-
-  ProviderProducer({
-    required this.managedType,
-  }) : constructor = managedType.targetConstructor;
-  final ClassElement managedType;
-  final ConstructorElement constructor;
-  late final meta = managedType.managedType!;
-
-  late final parameters = constructor.parameters;
-
-  late final managedParameters = parameters.where((p) => p.isManaged).toList();
-
-  Reference get _on => Reference('Manage<${managedType.displayName}>');
-
+  ConstructorElement get constructor => binding.constructor;
+  ManagedType get meta => managedType.managedType!;
+  List<ParameterElement> get parameters => constructor.parameters;
+  List<ParameterElement> get managedParameters =>
+      parameters.where((p) => managedInput(p) != null).toList();
   DartObject? get annotationManagedType =>
-      checkerManagedType.firstAnnotationOfExact(
-        managedType,
-      );
+      checkerManagedType.firstAnnotationOf(managedType);
 
   @override
   Spec produce() {
-    final builder = MixinBuilder()
-      ..name = managedType.providerMixinName
-      ..on = Reference(managedType.manageForClassTypeName)
-      ..fields.add(_providerField())
-      ..methods.addAll([
-        _providerGetter(),
-        _constructorMethod(),
-        _overrideCallMethod(),
-      ]);
-
-    if (meta.scope != ScopeType.unique) {
-      builder.fields.add(_paramsField());
+    final b = binding;
+    final provider = '${b.name}Provider';
+    final registration = 'Manage${b.name}${b.arguments}';
+    final params = '${b.name}Params${b.arguments}';
+    final dependencies = {
+      for (final p in b.inputs)
+        if (p.dependency != null) p.provider
+    };
+    // An explicit registration of the same type replaces the inferred edge
+    // for both resolution and lifecycle tracking.
+    final inputs = dependencies.isEmpty
+        ? 'dependsOn'
+        : '''
+      [for (final dep in <_m.Manage>[${dependencies.join(', ')}])
+        if (!dependsOn.any((d) => d.managedType == dep.managedType)) dep,
+        ...dependsOn]
+    ''';
+    final out = StringBuffer()
+      ..writeln('mixin $provider${b.formals} on _m.Manage<${b.target}> {');
+    if (b.generic) {
+      out.writeln('static final _providers = <_core.Type, _m.Manage>{};');
+      out.writeln(
+          'static $registration of${b.formals}() => _providers.putIfAbsent('
+          '${b.target}, () => register${b.arguments}()) as $registration;');
+    } else {
+      out.writeln('static final $registration provider = register();');
     }
-
-    return builder.build();
-  }
-
-  Method _constructorMethod() {
-    final positional = parameters.where((p) => p.isPositional).map((p) {
-      return p.type.element?.isManaged ?? false
-          ? refer('Manage.resolve()')
-          : refer('zone[#${p.name}]');
-    }).toList();
-
-    final named = parameters.where((p) => p.isNamed).map((p) {
-      return p.type.element?.isManaged ?? false
-          ? MapEntry(p.name, refer('Manage.resolve()'))
-          : MapEntry(p.name, refer('zone[#${p.name}]'));
-    });
-
-    final builder = MethodBuilder()
-      ..name = '_managed'
-      ..returns = Reference('${managedType.displayName}')
-      ..static = true
-      ..body = Block.of([
-        Code('final zone = Zone.current;'),
-        refer('${managedType.displayName}')
-            .newInstance(
-              positional,
-              Map.fromEntries(named),
-            )
-            .returned
-            .statement,
-      ]);
-
-    return builder.build();
-  }
-
-  Field _providerField() {
-    return Field(
-      (b) => b
-        ..name = '_provider'
-        ..modifier = FieldModifier.final$
-        ..static = true
-        ..assignment = refer(
-          'Manage${managedType.displayName}',
-        ).newInstance(
-          [
-            refer('_managed'),
-          ],
-          {
-            'scope': refer('${meta.scope}'),
-            'dependsOn': literalList(_dependsOn()),
-          },
-        ).code,
-    );
-  }
-
-  Iterable<Expression> _dependsOn() sync* {
-    for (final param in managedParameters) {
-      final classElement = param.typeElement as ClassElement;
-      yield refer(classElement.providerMixinName).property('provider');
-    }
-  }
-
-  Method _providerGetter() {
-    return Method((b) => b
-      ..name = 'provider'
-      ..static = true
-      ..type = MethodType.getter
-      ..returns = _on
-      ..body = Block.of([
-        ...managedParameters
-            .where((p) => p.hasNotUniqueScope)
-            .map((p) => p.typeElement)
-            .whereType<ClassElement>()
-            .map((p) =>
-                Code('assert(${p.providerMixinName}.params != null,"");')),
-        Code('return _provider;'),
-      ]));
-  }
-
-  Field _paramsField() {
-    return Field(
-      (b) => b
-        ..name = 'params'
-        ..modifier = FieldModifier.var$
-        ..type = Reference('${managedType.displayName}Params?')
-        ..static = true,
-    );
-  }
-
-  Method _overrideCallMethod() {
-    final params = managedType.isManaged && managedType.hasNotUniqueScope
-        ? '${managedType.providerMixinName}.params!'
-        : 'params';
-    final builder = MethodBuilder()
-      ..name = 'call'
-      ..returns = Reference(managedType.displayName)
-      ..annotations.add(refer('override'))
-      ..optionalParameters.add(
-        Parameter(
-          (b) => b
-            ..name = 'params'
-            ..type = Reference('${managedType.displayName}Params?')
-            ..covariant = true,
-        ),
-      )
-      ..lambda = true
-      ..body = Code('super.call($params)');
-    return builder.build();
+    final shared = b.scope != ScopeType.unique;
+    if (shared && !b.generic) out.writeln('static $params? params;');
+    final defaults = shared && b.generic ? 'params' : '_defaults';
+    out.writeln('$params? $defaults;');
+    out.writeln('static $registration register${b.formals}({$params? params, '
+        '_core.List<_m.Manage> dependsOn = const [], _m.OnNewInstance<${b.target}>? onNewInstance, '
+        '_m.OnDispose<${b.target}>? onDispose}) => $registration(_managed${b.arguments}, '
+        'scope: _m.ScopeType.${b.scope.name}, '
+        'dependsOn: $inputs, '
+        'onNewInstance: onNewInstance, onDispose: onDispose)..$defaults = params;');
+    out.writeln('static ${b.target} _managed${b.formals}() => '
+        '(_async.Zone.current[$params] as ${b.target} Function())();');
+    final fallback = b.requiresParams
+        ? '_RequiredParams(${b.target}, ${dartString(b.name + 'Params')})'
+        : '$params()';
+    final configured = shared && !b.generic
+        ? '_defaults ?? $provider.params'
+        : 'this.$defaults';
+    out.writeln(
+        '@_core.override ${b.target} call([covariant $params? params]) => '
+        'super.call(params ?? $configured ?? $fallback);');
+    out.writeln('}');
+    return Code(out.toString());
   }
 }

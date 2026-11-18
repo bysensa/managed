@@ -103,6 +103,12 @@ final markdown = await ExportModule.markdown(
 dart run build_runner build --delete-conflicting-outputs
 ```
 
+В этом примере генератор создаёт регистрации для `MarkdownStyle`,
+`MarkdownHeading` и `MarkdownTemplate`. Сессию, редактор и работу с хранилищем
+описывает приложение. Метод `register(dependsOn: ..., onDispose: ...)` позволяет
+подключить сгенерированный провайдер к такому же источнику пользователя.
+[Пример привязки к сессии](../../managed_gen/README.md#bind-a-session-to-a-generated-graph)
+
 ## Подмена хранилища и незавершённые операции
 
 Из каталога `managed/example` запустите `dart test`. В тестах

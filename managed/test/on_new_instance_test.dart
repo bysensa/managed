@@ -1,4 +1,3 @@
-import 'package:managed/annotations.dart';
 import 'package:managed/managed.dart';
 import 'package:test/test.dart';
 

@@ -1,0 +1,17 @@
+import 'package:managed/annotations.dart';
+
+@ManagedType(scope: ScopeType.unique, name: 'LocalItem')
+class Item {
+  Item(this.id);
+  final String id;
+}
+
+class Stamp {
+  const Stamp(this.id);
+  final int id;
+}
+
+typedef Transform = Stamp Function(Stamp, {required String label});
+typedef MaybeName = String?;
+
+extension type const Counter(int value) {}

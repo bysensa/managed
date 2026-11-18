@@ -1,0 +1,159 @@
+import 'package:catalog/catalog.dart' as catalog;
+import 'package:managed/annotations.dart';
+
+import 'models.dart';
+import 'nested/history.dart' as history;
+
+part 'services_part.dart';
+
+const _stamp = Stamp(41);
+Stamp _read() => _stamp;
+
+@ManagedType(scope: ScopeType.unique)
+class Settings {
+  Settings({
+    this.retries = 3,
+    this.title = r'cost $5',
+    this.label = 'guest',
+    this.stamp = _stamp,
+    this.read = _read,
+    this.items = const [_stamp],
+    this.point = (3, y: 4),
+  });
+
+  final int retries;
+  final String title;
+  final String? label;
+  final Stamp? stamp;
+  final Stamp Function() read;
+  final List<Stamp> items;
+  final (int, {int y}) point;
+}
+
+@ManagedType(scope: ScopeType.unique)
+class Positionals {
+  Positionals([this.stamp = _stamp, this.count = 7, this.flag]);
+  final Stamp? stamp;
+  final int count;
+  final bool? flag;
+}
+
+@ManagedType(scope: ScopeType.unique)
+class Pair {
+  Pair(this.left, this.right, this.catalogItem, this.archived);
+  final Item left;
+  final Item right;
+  final catalog.Item catalogItem;
+  final history.Item archived;
+}
+
+@ManagedType(scope: ScopeType.cached)
+class Box<T extends num> {
+  Box(this.value);
+  final T value;
+}
+
+@ManagedType(scope: ScopeType.unique)
+class Typed<T extends num> {
+  Typed(this.box, this.list, this.transform, this.record, this.convert);
+  final Box<T> box;
+  final List<Map<String, Stamp?>> list;
+  final Transform transform;
+  final (Stamp, {List<T> numbers})? record;
+  final V Function<V extends num>(V, [V?]) convert;
+}
+
+@ManagedType(scope: ScopeType.cached)
+class SessionCache {
+  SessionCache(this.owner);
+  final String owner;
+}
+
+@ManagedType(scope: ScopeType.unique)
+class Account {
+  Account(this.id, this.name);
+  final int id;
+  final String name;
+}
+
+@ManagedType(scope: ScopeType.cached)
+class AccountCache {
+  AccountCache(this.user);
+  final Account user;
+}
+
+@ManagedType(scope: ScopeType.singleton)
+class Editor {
+  Editor(this.cache);
+  final AccountCache cache;
+}
+
+@ManagedType(scope: ScopeType.unique, constructor: 'load')
+class Selected {
+  Selected() : value = -1;
+  Selected.load(this.value);
+  final int value;
+}
+
+@ManagedType(scope: ScopeType.unique)
+abstract class Label {
+  factory Label.named(String targetType, {required String inject}) = _Label;
+  String get value;
+}
+
+class _Label implements Label {
+  _Label(String targetType, {required String inject})
+      : value = targetType + inject;
+  @override
+  final String value;
+}
+
+class Base {
+  Base({this.count = 11});
+  final int count;
+}
+
+@ManagedType(scope: ScopeType.unique)
+class Inherited extends Base {
+  Inherited({super.count});
+}
+
+@ManagedType(scope: ScopeType.unique)
+class Shadow<ShadowParams> {
+  Shadow(this.value, int _class, {this.name, this.counter = const Counter(12)})
+      : number = _class;
+  final ShadowParams value;
+  final int number;
+  final MaybeName name;
+  final Counter counter;
+}
+
+@ManagedType(scope: ScopeType.unique)
+class Slot<T> {
+  Slot(this.value);
+  final T value;
+}
+
+@ManagedType(scope: ScopeType.unique)
+class Slots<T, U> {
+  Slots(this.left, this.right);
+  final Slot<T> left;
+  final Slot<U> right;
+}
+
+class Shared extends ManagedType {
+  const Shared() : super(scope: ScopeType.singleton, constructor: 'new');
+}
+
+@Shared()
+class SharedClock {
+  SharedClock() : label = 'shared';
+  SharedClock.other(this.label);
+  final String label;
+}
+
+@ManagedType(scope: ScopeType.unique)
+class ClockConsumer {
+  ClockConsumer(this.clock);
+  final SharedClock clock;
+}

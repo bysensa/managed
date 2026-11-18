@@ -1,0 +1,244 @@
+import 'dart:async';
+
+import 'package:catalog/module.dart' as catalog;
+import 'package:client/models.dart';
+import 'package:client/module.dart';
+import 'package:client/services.dart';
+import 'package:managed/managed.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test(
+      'zero-argument bindings and nullable managed inputs from the original sample',
+      () async {
+    final absent = BooProvider.provider(BooParams(unique: null));
+    final present =
+        BooProvider.provider(BooParams(unique: UniqueParams(), flag: false));
+    expect(absent.unique, isNull);
+    expect(present.unique, isNotNull);
+    expect(present.flag, isFalse);
+    expect(present.single, same(SingletonProvider.provider()));
+    expect(present.cached, same(CachedProvider.provider()));
+    await Scope.cached.reset();
+    expect(CachedProvider.provider(), isNot(same(present.cached)));
+    expect(SingletonProvider.provider(), same(present.single));
+  });
+
+  test(
+      'defaults, including private constants and function tear-offs, belong to the constructor',
+      () {
+    final plain = Settings();
+    final defaults = SettingsProvider.provider();
+    expect(defaults.retries, 3);
+    expect(defaults.title, plain.title);
+    expect(defaults.label, 'guest');
+    expect(defaults.stamp, same(plain.stamp));
+    expect(defaults.read, same(plain.read));
+    expect(defaults.items, same(plain.items));
+    expect(defaults.point, plain.point);
+    final override = SettingsProvider.provider(SettingsParams(
+      retries: 0,
+      title: '',
+      label: null,
+      stamp: null,
+      read: () => const Stamp(8),
+      items: const [],
+      point: (1, y: 2),
+    ));
+    expect(override.retries, 0);
+    expect(override.title, isEmpty);
+    expect(override.label, isNull);
+    expect(override.stamp, isNull);
+    expect(override.read().id, 8);
+    expect(override.items, isEmpty);
+    expect(override.point, (1, y: 2));
+    expect(() => SettingsParams(stamp: 5), throwsA(isA<TypeError>()));
+  });
+
+  test(
+      'omitted optional positional defaults, explicit null and positional gaps',
+      () {
+    final defaults = PositionalsProvider.provider();
+    expect(defaults.stamp, same(Positionals().stamp));
+    expect(defaults.count, 7);
+    final last = PositionalsProvider.provider(
+        PositionalsParams(stamp: null, flag: true));
+    expect(last.stamp, isNull);
+    expect(last.count, 7);
+    expect(last.flag, isTrue);
+    expect(
+        () => PositionalsProvider.provider(PositionalsParams(count: 9)),
+        throwsA(isA<ArgumentError>()
+            .having((e) => e.toString(), 'message', contains('preceding'))));
+  });
+
+  test(
+      'two unique arguments use distinct Params and a dependency package owns its singleton',
+      () {
+    final pair = PairProvider.provider(PairParams(
+      archived: ArchiveItemParams(id: 23),
+      left: LocalItemParams(id: 'left'),
+      right: LocalItemParams(id: 'right'),
+    ));
+    expect(pair.left.id, 'left');
+    expect(pair.right.id, 'right');
+    expect(pair.left, isNot(same(pair.right)));
+    expect(pair.catalogItem, same(catalog.ItemProvider.provider()));
+    expect(pair.archived.id, 23);
+    expect(RevisionProvider.provider().version, 1);
+  });
+
+  test(
+      'bounded generics, distinct specializations, nested types, typedefs, records and callbacks',
+      () async {
+    await Scope.cached.reset();
+    final ints = BoxProvider.of<int>()..params = BoxParams<int>(value: 8);
+    final doubles = BoxProvider.of<double>()
+      ..params = BoxParams<double>(value: 2.5);
+    expect(BoxProvider.of<int>(), same(ints));
+    expect(doubles().value, 2.5);
+    V convert<V extends num>(V value, [V? other]) => other ?? value;
+    const stamp = Stamp(13);
+    final result = TypedProvider.of<int>()(TypedParams<int>(
+      list: [
+        {'s': stamp}
+      ],
+      transform: (s, {required label}) => s,
+      record: (stamp, numbers: [3]),
+      convert: convert,
+    ));
+    expect(result.box, same(ints()));
+    expect(result.box.value, 8);
+    expect(result.list.single['s'], same(stamp));
+    expect(result.transform(stamp, label: ''), same(stamp));
+    expect(result.record!.numbers.single, 3);
+    expect(result.convert<double>(1, 4.5), 4.5);
+  });
+
+  test(
+      'selected, sole named, abstract factory, part files and inherited defaults',
+      () {
+    expect(SelectedProvider.provider(SelectedParams(value: 42)).value, 42);
+    expect(
+        LabelProvider.provider(LabelParams(targetType: 'a', inject: 'b')).value,
+        'ab');
+    expect(InPartProvider.provider().amount, 17);
+    expect(InheritedProvider.provider().count, 11);
+    expect(InheritedProvider.provider(InheritedParams(count: 4)).count, 4);
+    expect(ClockConsumerProvider.provider().clock,
+        same(SharedClockProvider.provider()));
+    expect(SharedClockProvider.provider().label, 'shared');
+  });
+
+  test(
+      'generic variables can shadow generated names and private positional names can be keywords',
+      () {
+    final result =
+        ShadowProvider.of<String>()(ShadowParams<String>(value: 'v', arg1: 4));
+    expect(result.value, 'v');
+    expect(result.number, 4);
+    expect(result.name, isNull);
+    expect(result.counter.value, 12);
+    expect(
+        ShadowProvider.of<int>()(ShadowParams<int>(
+          value: 2,
+          arg1: 5,
+          name: 'x',
+          counter: const Counter(7),
+        )).counter.value,
+        7);
+  });
+
+  test('two generic input types may coincide after specialization', () {
+    final sameType = SlotsProvider.of<int, int>()(SlotsParams<int, int>(
+      left: SlotParams<int>(value: 1),
+      right: SlotParams<int>(value: 2),
+    ));
+    expect(sameType.left.value, 1);
+    expect(sameType.right.value, 2);
+    final different = SlotsProvider.of<String, int>()(SlotsParams<String, int>(
+      left: SlotParams<String>(value: 'a'),
+      right: SlotParams<int>(value: 3),
+    ));
+    expect(different.left.value, 'a');
+    expect(different.right.value, 3);
+  });
+
+  test('a custom factory can still read named inputs from the zone', () {
+    final custom =
+        ManageSessionCache(() => SessionCache(Zone.current[#owner] as String));
+    expect(custom(SessionCacheParams(owner: 'custom')).owner, 'custom');
+  });
+
+  test(
+      'params are checked on cache misses and explicit params override scope defaults',
+      () async {
+    final provider = SessionCacheProvider.provider;
+    await Scope.cached.reset();
+    SessionCacheProvider.params = null;
+    expect(
+        provider.call,
+        throwsA(isA<StateError>().having(
+            (e) => e.message, 'message', contains('SessionCacheParams'))));
+    final first = provider(SessionCacheParams(owner: 'first'));
+    expect(provider(), same(first));
+    await Scope.cached.reset();
+    final fake = SessionCache('fake');
+    await provider.mock(fake);
+    expect(provider(), same(fake));
+    await provider.resetMock();
+    SessionCacheProvider.params = SessionCacheParams(owner: 'fallback');
+    expect(provider(SessionCacheParams(owner: 'explicit')).owner, 'explicit');
+    await Scope.cached.reset();
+    expect(provider().owner, 'fallback');
+    SessionCacheProvider.params = null;
+  });
+
+  test(
+      'generated registrations follow source identity, logout and cache reset through a singleton',
+      () async {
+    final user = Manage.source<Account>(sameIdentity: (a, b) => a.id == b.id);
+    final events = <String>[];
+    final cache = AccountCacheProvider.register(
+      dependsOn: [user],
+      onNewInstance: (_) => events.add('+cache'),
+      onDispose: (_) => events.add('-cache'),
+    );
+    final editor = EditorProvider.register(
+        dependsOn: [cache],
+        onNewInstance: (_) => events.add('+editor'),
+        onDispose: (_) async => events.add('-editor'));
+    expect(editor.call, throwsStateError);
+    expect(cache.dependencies, [user]);
+    expect(editor.dependencies, [cache]);
+    await user.set(Account(1, 'first'));
+    final first = editor();
+    expect(first.cache, same(cache()));
+    await user.set(Account(1, 'refresh'));
+    expect(editor(), same(first));
+    expect(first.cache.user.name, 'first');
+    expect(user().name, 'refresh');
+    await AccountProvider.provider.mock(Account(3, 'unused default'));
+    expect(editor(), same(first));
+    await user.clear();
+    expect(events, ['+cache', '+editor', '-editor', '-cache']);
+    expect(editor.call, throwsStateError);
+    await user.set(Account(2, 'next'));
+    final next = editor();
+    expect(next.cache.user, same(user()));
+    expect(next, isNot(same(first)));
+    expect(next.cache, isNot(same(first.cache)));
+    await Scope.cached.reset();
+    expect(events, [
+      '+cache',
+      '+editor',
+      '-editor',
+      '-cache',
+      '+cache',
+      '+editor',
+      '-editor',
+      '-cache'
+    ]);
+    expect(editor(), isNot(same(next)));
+  });
+}

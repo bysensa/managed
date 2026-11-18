@@ -1,54 +1,84 @@
+import 'package:build/build.dart';
 import 'package:build_test/build_test.dart';
-import 'package:managed_gen/managed_gen.dart';
-import 'package:managed_gen/src/extensions/spec.extension.dart';
-import 'package:managed_gen/src/producers/extended.manage.producer.dart';
-import 'package:managed_gen/src/producers/params.producer.dart';
-import 'package:managed_gen/src/producers/provider.producer.dart';
-import 'package:managed_gen/src/visitor.dart';
+import 'package:managed_gen/src/generator.dart';
+import 'package:source_gen/source_gen.dart';
 import 'package:test/test.dart';
 
-extension NullableExt<T> on T? {
-  Type get nonNullableType => T;
-}
-
-class Some {}
-
 void main() {
-  test('should visit', () async {
-    final visitor = ManagedTypeCollector();
-    final mock = 'managed_gen|test/_files/simple.dart';
-    final lib = await resolveSources(
-      {
-        mock: useAssetReader,
-      },
-      (resolver) => resolver.findLibraryByName('example'),
-      resolverFor: mock,
-    );
-    final cls = lib!.getClass('Boo')!;
-    cls.visitChildren(visitor);
-    print(visitor.managedTypes);
-  });
+  const sources = {
+    'ambiguous constructors': (
+      'class Root { Root.one(); Root.two(); }',
+      'Choose a public constructor for Root',
+    ),
+    'inaccessible constructor': (
+      'class Root { Root._(); }',
+      'Choose a public constructor for Root',
+    ),
+    'explicit missing constructor': (
+      "class Root { Root(); }",
+      'Cannot call constructor "missing" of Root',
+    ),
+    'abstract class without a factory': (
+      'abstract class Root {}',
+      'Choose a public constructor for Root',
+    ),
+    'private managed class': (
+      'class _Root {}',
+      'must be public',
+    ),
+    'private argument type': (
+      'class Root { Root(_Hidden input); } class _Hidden {}',
+      'type _Hidden is private',
+    ),
+    'invalid binding name': (
+      'class Root {}',
+      'Invalid public binding name',
+    ),
+    'multiple annotations on one class': (
+      '@binding class Root {}',
+      'Choose one @ManagedType',
+    ),
+    'direct dependency cycle': (
+      'class Root { Root(Root parent); }',
+      'Root -> Root',
+    ),
+    'transitive dependency cycle': (
+      'class Root { Root(Next next); } @binding class Next { Next(Root root); }',
+      'Root -> Next -> Root',
+    ),
+    'duplicate generated name': (
+      "class Root {} @ManagedType(scope: ScopeType.cached, name: 'Root') class Other {}",
+      'Generated name ManageRoot is shared',
+    ),
+  };
 
-  test('should provide', () async {
-    final _ = ManagedTypeCollector();
-    final mock = 'managed_gen|test/_files/simple.dart';
-    final lib = await resolveSources(
-      {
-        mock: useAssetReader,
-      },
-      (resolver) => resolver.findLibraryByName('example'),
-      resolverFor: mock,
-    );
-    final cls = lib!.getClass('Boo')!;
-    final extendedManageProd = ExtendedManageProducer(managedType: cls);
-    final paramsProd = ParamsProducer(managedType: cls);
-    final prod = ProviderProducer(managedType: cls);
-
-    print(extendedManageProd.produce().formattedString());
-    print(paramsProd.produce().formattedString());
-    expect(prod.produce().formattedString(), contains('super.call(params)'));
-    final cached = ProviderProducer(managedType: lib.getClass('Cached')!);
-    expect(cached.produce().formattedString(),
-        contains('super.call(CachedProvider.params!)'));
-  });
+  for (final entry in sources.entries) {
+    test('diagnoses ${entry.key}', () async {
+      final option = switch (entry.key) {
+        'explicit missing constructor' => ", constructor: 'missing'",
+        'invalid binding name' => ", name: 'not-a-name'",
+        _ => '',
+      };
+      final id = AssetId('managed_gen', 'lib/invalid.dart');
+      final source = """
+        import 'package:managed/annotations.dart';
+        const binding = ManagedType(scope: ScopeType.unique$option);
+        @binding ${entry.value.$1}
+      """;
+      await expectLater(
+        resolveSources({id.toString(): source}, (resolver) async {
+          final library = await resolver.libraryFor(id);
+          final roots = library.units
+              .expand((unit) => unit.classes)
+              .where((element) => element.metadata.isNotEmpty);
+          return ManagedGenerator(id.package).generate(roots);
+        }, resolverFor: id.toString()),
+        throwsA(isA<InvalidGenerationSourceError>().having(
+          (error) => error.message,
+          'diagnostic',
+          contains(entry.value.$2),
+        )),
+      );
+    });
+  }
 }

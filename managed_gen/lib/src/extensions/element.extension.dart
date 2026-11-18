@@ -1,97 +1,56 @@
 import 'package:analyzer/dart/element/element.dart';
 import 'package:managed/annotations.dart';
-import 'package:recase/recase.dart';
 import 'package:source_gen/source_gen.dart';
 
 extension ElementExt on Element {
   static final _checkerManagedType = TypeChecker.fromRuntime(ManagedType);
 
   ManagedType? get managedType {
-    final annotation = _checkerManagedType.firstAnnotationOfExact(this);
-    if (annotation == null) {
+    final annotations = _checkerManagedType.annotationsOf(this).iterator;
+    if (!annotations.moveNext()) {
       return null;
     }
-    final reader = ConstantReader(annotation);
+    final reader = ConstantReader(annotations.current);
+    if (annotations.moveNext()) {
+      throw InvalidGenerationSourceError(
+          'Choose one @ManagedType registration per class.',
+          element: this);
+    }
     final enumIndex =
         reader.peek('scope')!.objectValue.getField('index')!.toIntValue()!;
     final scope = ScopeType.values[enumIndex];
 
-    return ManagedType(scope: scope);
+    return ManagedType(
+      scope: scope,
+      constructor: reader.peek('constructor')?.stringValue,
+      name: reader.peek('name')?.stringValue,
+    );
   }
 
   bool get isManaged {
-    return _checkerManagedType.hasAnnotationOfExact(this);
+    return _checkerManagedType.hasAnnotationOf(this);
   }
 
-  bool get isNotManaged => !isManaged;
-
-  bool get hasNotUniqueScope => !hasUniqueScope;
-
   bool get hasUniqueScope => managedType?.scope == ScopeType.unique;
-
-  bool get hasNotCachedScope => !hasCachedScope;
-
-  bool get hasCachedScope => managedType?.scope == ScopeType.cached;
-
-  bool get hasNotSingletonScope => !hasSingletonScope;
-
-  bool get hasSingletonScope => managedType?.scope == ScopeType.singleton;
 }
 
 extension ClassElementExt on ClassElement {
   ConstructorElement get targetConstructor {
-    final constructor = constructors
-        .where((constructor) => constructor.name.isEmpty)
-        .firstOrNull;
-    if (constructor == null) {
-      throw Exception(
-          'Class annotated with ManagedType must provide constructor without name');
-    }
-    return constructor;
+    final selection = managedType?.constructor;
+    final selected = selection == 'new' ? '' : selection;
+    final accessible = constructors
+        .where((c) => c.isPublic && (!isAbstract || c.isFactory))
+        .toList();
+    final constructor =
+        accessible.where((c) => c.name == (selected ?? '')).firstOrNull;
+    if (constructor != null) return constructor;
+    if (selected == null && accessible.length == 1) return accessible.single;
+    throw InvalidGenerationSourceError(
+      selected != null
+          ? 'Cannot call constructor "$selected" of $displayName from module.dart.'
+          : 'Choose a public constructor for $displayName using @ManagedType(constructor: ...). '
+              'Available constructors: ${accessible.map((c) => c.displayName).join(', ')}.',
+      element: this,
+    );
   }
-
-  String get nameInCamelCase => name.camelCase;
-
-  String get providerMixinName => '${displayName}Provider';
-
-  String get paramsClassName => '${displayName}Params';
-
-  String get extendedManageClassName => 'Manage${displayName}';
-
-  String get manageForClassTypeName => 'Manage<${displayName}>';
-}
-
-extension ConstructorElementExt on ConstructorElement {
-  ClassElement get relatedClass => returnType.element as ClassElement;
-
-  String get nameInCamelCase => relatedClass.nameInCamelCase;
-
-  String get providerMixinName => relatedClass.providerMixinName;
-
-  String get paramsClassName => relatedClass.paramsClassName;
-
-  String get extendedManageClassName => relatedClass.extendedManageClassName;
-
-  String get manageForClassTypeName => relatedClass.manageForClassTypeName;
-}
-
-extension ParameterElementExt on ParameterElement {
-  Element? get typeElement => type.element;
-
-  bool get isManaged => typeElement?.isManaged ?? false;
-
-  bool get hasNotUniqueScope => !hasUniqueScope;
-
-  bool get hasUniqueScope =>
-      typeElement?.managedType?.scope == ScopeType.unique;
-
-  bool get hasNotCachedScope => !hasCachedScope;
-
-  bool get hasCachedScope =>
-      typeElement?.managedType?.scope == ScopeType.cached;
-
-  bool get hasNotSingletonScope => !hasSingletonScope;
-
-  bool get hasSingletonScope =>
-      typeElement?.managedType?.scope == ScopeType.singleton;
 }

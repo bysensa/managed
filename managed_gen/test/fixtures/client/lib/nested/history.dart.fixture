@@ -1,0 +1,13 @@
+import 'package:managed/annotations.dart';
+
+@ManagedType(scope: ScopeType.unique, name: 'ArchiveItem')
+class Item {
+  Item(this.id);
+  final int id;
+}
+
+@ManagedType(scope: ScopeType.cached)
+class Revision {
+  Revision({this.version = 1});
+  final int version;
+}

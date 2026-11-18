@@ -1,3 +1,12 @@
+## Unreleased
+
+- Preserve constructor defaults, nullability, generic bounds and nested types.
+  Bind repeated unique inputs independently and reuse providers across packages.
+- Select public constructors and binding names through `@ManagedType`.
+  Generated providers support per-type registrations and lifecycle callbacks.
+- Detect cycles, inaccessible signatures and name conflicts during generation.
+  Track changes to part files and dependency packages in incremental builds.
+
 ## 0.0.2-dev.1
 
 - Generate calls through the lifecycle-aware `Manage.call` in managed 2.

@@ -1,0 +1,23 @@
+import 'package:client/module.dart';
+import 'package:client/services.dart';
+
+void main() {
+  final plain = Settings();
+  final generated = SettingsProvider.provider();
+  final explicit =
+      SettingsProvider.provider(SettingsParams(label: null, stamp: null));
+  if (generated.label != plain.label ||
+      generated.stamp != plain.stamp ||
+      generated.read() != plain.read() ||
+      explicit.label != null ||
+      explicit.stamp != null) {
+    throw StateError('Constructor defaults or explicit null changed');
+  }
+  final slots = SlotsProvider.of<int, int>()(SlotsParams<int, int>(
+    left: SlotParams<int>(value: 1),
+    right: SlotParams<int>(value: 2),
+  ));
+  if (slots.left.value != 1 || slots.right.value != 2) {
+    throw StateError('Generic constructor arguments were mixed');
+  }
+}
