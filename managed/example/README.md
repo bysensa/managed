@@ -37,7 +37,7 @@ flowchart LR
   exportNote["Экспорт в Markdown · unique"] --> repo
   exportNote --> user
   exportNote --> template["MarkdownTemplate · unique"]
-  template --> style["MarkdownStyle · cached"]
+  template --> markdownStyle["MarkdownStyle · cached"]
   template --> heading["MarkdownHeading · unique"]
   help["TextCache справки · cached"]
 ```
