@@ -5,7 +5,6 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 
 part 'src/lifecycle.dart';
-part 'src/source.dart';
 part 'src/scope.dart';
 
 typedef Factory<T> = T Function();
@@ -35,17 +34,6 @@ Type nonNullableTypeOf<T>(T? object) => T;
 /// A callable registration for [T]. Top-level or static fields let modules
 /// refer to the same registration and its lifetime from anywhere in the app.
 class Manage<T extends Object> with Provider<T> {
-  /// Creates an initially empty provider for an externally supplied value.
-  /// [sameIdentity] defaults to [identical]. A refresh of the same identity
-  /// publishes the latest value and preserves already constructed dependents.
-  /// [onDispose] receives the last value of an outgoing identity after its
-  /// dependents have been released.
-  static ManageSource<S> source<S extends Object>({
-    bool Function(S previous, S next)? sameIdentity,
-    OnDispose<S>? onDispose,
-  }) =>
-      ManageSource._(_SourceState(sameIdentity ?? identical, onDispose));
-
   static I resolve<I>() {
     final invocationZone = Zone.current;
     _Resolution.current?.check();
@@ -69,6 +57,15 @@ class Manage<T extends Object> with Provider<T> {
   final OnNewInstance<T>? _onNewInstance;
   final OnDispose<T>? _onDispose;
   _Lifetime? _overrideChanges;
+  Expando<_InstanceChanges>? _notifications;
+
+  _InstanceChanges _changesFor(DependencyLifecycle value) {
+    final notifications = _notifications ??= Expando<_InstanceChanges>();
+    return notifications[value] ??= _InstanceChanges(this);
+  }
+
+  Future<void> _dependencyChanged(DependencyLifecycle value) =>
+      _changesFor(value).invalidate();
 
   T? _mock;
 
@@ -126,17 +123,26 @@ class Manage<T extends Object> with Provider<T> {
     final inherits =
         scope == ScopeType.unique && parent != null && parent.building;
     if (inherits) lifetimes.addAll(parent.generations.keys);
-    final ownsTransients = scope != ScopeType.unique ||
-        (inherits && parent.ownsTransients) ||
-        lifetimes.any((lifetime) => lifetime.ownsTransients);
-    return _Resolution(this, lifetimes, ownsTransients);
+    return _Resolution(this, lifetimes,
+        scope != ScopeType.unique || (inherits && parent.ownsTransients));
+  }
+
+  T _read(T value, [_Entry? entry]) {
+    _InstanceChanges? changes;
+    if (value is DependencyLifecycle) {
+      changes = entry == null
+          ? value._attach(this)
+          : entry._changes ??= value._attach(this);
+    }
+    _Resolution.current?.observe(this, entry?.lifetimes ?? const [], changes);
+    return value;
   }
 
   /// Returns the instance, constructing its dependencies on a cache miss.
   @override
   T call([covariant Params? params]) {
     _Resolution.current?.check();
-    if (_mock != null) return _mock!;
+    if (_mock != null) return _read(_mock!);
     if (_storage._instances?.containsKey(_cacheKey) ?? false) return provide();
     final resolution = _resolution();
     return resolution.run(() {
@@ -161,7 +167,7 @@ class Manage<T extends Object> with Provider<T> {
   T callForGenerated() {
     _Resolution.current?.check();
     if (_mock != null) {
-      return _mock!;
+      return _read(_mock!);
     }
     return provide();
   }
@@ -171,7 +177,7 @@ class Manage<T extends Object> with Provider<T> {
     final current = _Resolution.current;
     current?.check();
     final entry = _storage._instances?[_cacheKey];
-    if (entry != null) return entry.value as T;
+    if (entry != null) return _read(entry.value as T, entry);
     final resolution =
         identical(current?.provider, this) ? current! : _resolution();
     return resolution.run(() => _storage._create(
@@ -180,6 +186,7 @@ class Manage<T extends Object> with Provider<T> {
           resolution.ownsTransients ? resolution.generations.keys.toSet() : {},
           _onNewInstance,
           _onDispose,
+          resolution: resolution,
         ));
   }
 

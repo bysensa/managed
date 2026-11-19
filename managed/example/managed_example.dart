@@ -20,7 +20,7 @@ Future<void> main(List<String> arguments) async {
   try {
     await runNotebook();
   } finally {
-    await AuthModule.user.clear();
+    await AuthModule.session().logout();
     await Scope.cached.reset();
   }
 }
@@ -28,7 +28,7 @@ Future<void> main(List<String> arguments) async {
 void printGraph(ManagedBy roots) {
   final seen = <Manage>{};
   void visit(Manage provider, String indent) {
-    final scope = provider is ManageSource ? 'source' : provider.scope.name;
+    final scope = provider.scope.name;
     final firstVisit = seen.add(provider);
     print('$indent${provider.managedType} [$scope]${firstVisit ? '' : ' ↩'}');
     if (firstVisit) {
@@ -57,7 +57,7 @@ Future<void> runNotebook() async {
   }
 
   print('\nАнна открывает блокнот');
-  await AuthModule.user.set(const User('anna', 'Анна'));
+  await AuthModule.session().login(const User('anna', 'Анна'));
   final editor = EditorModule.editor();
   final repository = NotesModule.repository();
   print(
@@ -68,8 +68,8 @@ Future<void> runNotebook() async {
   await editor.save();
 
   print('\nС сервера приходит новая фамилия');
-  await AuthModule.user.set(const User('anna', 'Анна Волкова'));
-  print('  В источнике — ${AuthModule.user().name}, '
+  await AuthModule.session().login(const User('anna', 'Анна Волкова'));
+  print('  В сессии — ${AuthModule.user().name}, '
       'в снимке при открытии блокнота — ${repository.owner.name}');
   print('  Редактор до и после обновления — '
       '${instanceName(editor)} и ${instanceName(EditorModule.editor())}');
@@ -90,17 +90,17 @@ Future<void> runNotebook() async {
   print('\nБорис входит, пока у Анны открыт черновик');
   reopened.edit(route, 'Встречаемся у первого вагона');
   const boris = User('boris', 'Борис');
-  await AuthModule.user.set(boris);
+  await AuthModule.session().login(boris);
   print('  На сервере у Анны — «${await storage.read('anna', route)}»');
   await showRoute(NotesModule.notebook);
   final borisEditor = EditorModule.editor();
   borisEditor.edit(route, 'Автобус до Пскова');
 
   print('\nБорис выходит и снова входит в тот же аккаунт');
-  await AuthModule.user.clear();
+  await AuthModule.session().logout();
   print('  После выхода общая справка ${instanceName(newHelp)} по-прежнему '
       'хранит ${newHelp.read('save')}');
-  await AuthModule.user.set(boris);
+  await AuthModule.session().login(boris);
   print('  Редактор в предыдущем и новом входе — '
       '${instanceName(borisEditor)} и ${instanceName(EditorModule.editor())}');
   await showRoute(NotesModule.notebook);

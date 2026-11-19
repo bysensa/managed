@@ -194,51 +194,40 @@ void main() {
     SessionCacheProvider.params = null;
   });
 
-  test(
-      'generated registrations follow source identity, logout and cache reset through a singleton',
+  test('generated bindings attach lifecycle hooks and observe account changes',
       () async {
-    final user = Manage.source<Account>(sameIdentity: (a, b) => a.id == b.id);
-    final events = <String>[];
-    final cache = AccountCacheProvider.register(
-      dependsOn: [user],
-      onNewInstance: (_) => events.add('+cache'),
-      onDispose: (_) => events.add('-cache'),
-    );
-    final editor = EditorProvider.register(
-        dependsOn: [cache],
-        onNewInstance: (_) => events.add('+editor'),
-        onDispose: (_) async => events.add('-editor'));
+    final session = AccountSessionProvider.provider;
+    final user = Manage(() => Manage.resolve<AccountSession>().user,
+        dependsOn: [session]);
+    final cache = AccountCacheProvider.register(dependsOn: [user]);
+    final editor = EditorProvider.register(dependsOn: [cache]);
     expect(editor.call, throwsStateError);
     expect(cache.dependencies, [user]);
     expect(editor.dependencies, [cache]);
-    await user.set(Account(1, 'first'));
+    await session().update(Account(1, 'first'));
     final first = editor();
     expect(first.cache, same(cache()));
-    await user.set(Account(1, 'refresh'));
+    expect(first.cache.starts, 1);
+    await session().update(Account(1, 'refresh'));
     expect(editor(), same(first));
     expect(first.cache.user.name, 'first');
     expect(user().name, 'refresh');
     await AccountProvider.provider.mock(Account(3, 'unused default'));
     expect(editor(), same(first));
-    await user.clear();
-    expect(events, ['+cache', '+editor', '-editor', '-cache']);
+    await session().update(null);
+    expect(first.stops, 1);
+    expect(first.cache.stops, 1);
     expect(editor.call, throwsStateError);
-    await user.set(Account(2, 'next'));
+    await session().update(Account(2, 'next'));
     final next = editor();
     expect(next.cache.user, same(user()));
     expect(next, isNot(same(first)));
     expect(next.cache, isNot(same(first.cache)));
     await Scope.cached.reset();
-    expect(events, [
-      '+cache',
-      '+editor',
-      '-editor',
-      '-cache',
-      '+cache',
-      '+editor',
-      '-editor',
-      '-cache'
-    ]);
+    expect(next.stops, 1);
+    expect(next.cache.stops, 1);
+    expect(first.stops, 1);
     expect(editor(), isNot(same(next)));
+    await session().update(null);
   });
 }

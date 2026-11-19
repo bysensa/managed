@@ -1,8 +1,41 @@
+import 'package:managed/managed.dart';
+
+final _ids = Expando<int>();
+var _nextId = 0;
+
+String instanceName(Object value) =>
+    '${value.runtimeType}#${_ids[value] ??= ++_nextId}';
+
+abstract class _NotebookResource with DependencyLifecycle {
+  @override
+  void init() => print('  + ${instanceName(this)}');
+
+  @override
+  void dispose() => print('  − ${instanceName(this)}');
+}
+
 class User {
   const User(this.id, this.name);
 
   final String id;
   final String name;
+}
+
+class UserSession with DependencyLifecycle {
+  User? _user;
+
+  User get user => _user ?? (throw StateError('Сначала войдите в аккаунт'));
+
+  Future<void> login(User user) => _update(user);
+  Future<void> logout() => _update(null);
+
+  Future<void> _update(User? next) async {
+    final previous = _user;
+    _user = next;
+    if (previous?.id == next?.id) return;
+    await dependencyChanged();
+    if (previous != null) print('  − сессия ${previous.name} (${previous.id})');
+  }
 }
 
 abstract interface class NoteStorage {
@@ -11,7 +44,7 @@ abstract interface class NoteStorage {
 }
 
 /// В памяти сервера у каждого аккаунта свой набор ключей.
-class MemoryStorage implements NoteStorage {
+class MemoryStorage extends _NotebookResource implements NoteStorage {
   final _notes = <(String, String), String>{};
 
   @override
@@ -23,7 +56,7 @@ class MemoryStorage implements NoteStorage {
   }
 }
 
-class TextCache {
+class TextCache extends _NotebookResource {
   final _entries = <String, String>{};
   bool _closed = false;
 
@@ -37,9 +70,11 @@ class TextCache {
     _entries[key] = text;
   }
 
-  void close() {
+  @override
+  void dispose() {
     _closed = true;
     _entries.clear();
+    super.dispose();
   }
 }
 
@@ -48,7 +83,7 @@ abstract interface class Notebook {
   Future<void> save(String key, String text);
 }
 
-class CachedNotebook implements Notebook {
+class CachedNotebook extends _NotebookResource implements Notebook {
   CachedNotebook(this.owner, this._storage, this._cache);
 
   final User owner;
@@ -73,16 +108,24 @@ class CachedNotebook implements Notebook {
     if (!_closed) _cache.put(key, text);
   }
 
-  void close() => _closed = true;
+  @override
+  void dispose() {
+    _closed = true;
+    super.dispose();
+  }
 }
 
-class DraftBuffer {
+class DraftBuffer extends _NotebookResource {
   final edits = <String, String>{};
 
-  void close() => edits.clear();
+  @override
+  void dispose() {
+    edits.clear();
+    super.dispose();
+  }
 }
 
-class NoteEditor {
+class NoteEditor extends _NotebookResource {
   NoteEditor(this.notebook, this.buffer);
 
   final Notebook notebook;
@@ -117,8 +160,10 @@ class NoteEditor {
     }
   }
 
-  Future<void> close() {
+  @override
+  Future<void> dispose() async {
     _closed = true;
-    return _savePending();
+    await _savePending();
+    super.dispose();
   }
 }

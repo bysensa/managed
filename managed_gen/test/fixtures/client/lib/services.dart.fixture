@@ -1,5 +1,6 @@
 import 'package:catalog/catalog.dart' as catalog;
 import 'package:managed/annotations.dart';
+import 'package:managed/managed.dart' show DependencyLifecycle;
 
 import 'models.dart';
 import 'nested/history.dart' as history;
@@ -77,15 +78,40 @@ class Account {
 }
 
 @ManagedType(scope: ScopeType.cached)
-class AccountCache {
+class AccountCache with DependencyLifecycle {
   AccountCache(this.user);
   final Account user;
+  int starts = 0;
+  int stops = 0;
+  @override
+  void init() => starts++;
+  @override
+  void dispose() => stops++;
 }
 
 @ManagedType(scope: ScopeType.singleton)
-class Editor {
+class Editor with DependencyLifecycle {
   Editor(this.cache);
   final AccountCache cache;
+  int stops = 0;
+  @override
+  Future<void> dispose() async {
+    await Future<void>.value();
+    if (cache.stops != 0) throw StateError('Cache closed before its editor');
+    stops++;
+  }
+}
+
+@ManagedType(scope: ScopeType.singleton)
+class AccountSession with DependencyLifecycle {
+  Account? _user;
+  Account get user => _user ?? (throw StateError('Log in first'));
+
+  Future<void> update(Account? next) {
+    final previous = _user;
+    _user = next;
+    return previous?.id == next?.id ? Future.value() : dependencyChanged();
+  }
 }
 
 @ManagedType(scope: ScopeType.unique, constructor: 'load')

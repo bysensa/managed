@@ -6,40 +6,23 @@ import 'markdown.dart';
 import 'module.dart';
 import 'notebook.dart';
 
-final _ids = Expando<int>();
-var _nextId = 0;
-
-/// По номеру в журнале можно проследить за конкретным экземпляром.
-String instanceName(Object value) =>
-    '${value.runtimeType}#${_ids[value] ??= ++_nextId}';
-
-void _created(Object value) => print('  + ${instanceName(value)}');
-void _disposed(Object value) => print('  − ${instanceName(value)}');
-
-void _closeCache(TextCache cache) {
-  cache.close();
-  _disposed(cache);
-}
-
 abstract final class AppModule {
   static final storage = Manage<NoteStorage>(
     MemoryStorage.new,
     scope: ScopeType.singleton,
-    onNewInstance: _created,
   );
 
   static final helpCache = Manage(
     TextCache.new,
     scope: ScopeType.cached,
-    onNewInstance: _created,
-    onDispose: _closeCache,
   );
 }
 
 abstract final class AuthModule {
-  static final user = Manage.source<User>(
-    sameIdentity: (previous, next) => previous.id == next.id,
-    onDispose: (user) => print('  − сессия ${user.name} (${user.id})'),
+  static final session = Manage(UserSession.new, scope: ScopeType.singleton);
+  static final user = Manage(
+    () => Manage.resolve<UserSession>().user,
+    dependsOn: [session],
   );
 }
 
@@ -49,8 +32,6 @@ abstract final class NotesModule {
     scope: ScopeType.cached,
     // Записи в кэше принадлежат конкретной паре аккаунта и хранилища.
     dependsOn: [AuthModule.user, AppModule.storage],
-    onNewInstance: _created,
-    onDispose: _closeCache,
   );
 
   static final repository = Manage(
@@ -61,11 +42,6 @@ abstract final class NotesModule {
     ),
     scope: ScopeType.cached,
     dependsOn: [AuthModule.user, AppModule.storage, cache],
-    onNewInstance: _created,
-    onDispose: (repo) {
-      repo.close();
-      _disposed(repo);
-    },
   );
 
   static final notebook = repository.as<Notebook>();
@@ -73,25 +49,12 @@ abstract final class NotesModule {
 
 abstract final class EditorModule {
   // Скоуп по умолчанию — unique. Каждый редактор получает свой буфер.
-  static final buffer = Manage(
-    DraftBuffer.new,
-    onNewInstance: _created,
-    onDispose: (drafts) {
-      drafts.close();
-      _disposed(drafts);
-    },
-  );
+  static final buffer = Manage(DraftBuffer.new);
 
   static final editor = Manage(
     () => NoteEditor(Manage.resolve<Notebook>(), Manage.resolve<DraftBuffer>()),
     scope: ScopeType.singleton,
     dependsOn: [NotesModule.notebook, buffer],
-    onNewInstance: _created,
-    onDispose: (editor) async {
-      // Пока сохраняется черновик, буфер и репозиторий ещё открыты.
-      await editor.close();
-      _disposed(editor);
-    },
   );
 }
 

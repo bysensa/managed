@@ -1,7 +1,37 @@
 part of '../managed.dart';
 
-/// A source replacement or a scope reset ends one generation. Entries subscribe
-/// when constructed, so reverse subscription order releases consumers first.
+/// Implement on a dependency that owns resources or signals a change of state.
+/// A shared instance stays available while its consumers are recreated.
+mixin DependencyLifecycle {
+  WeakReference<Manage>? _owner;
+
+  _InstanceChanges? _attach(Manage registration) {
+    final reference = _owner;
+    if (reference != null) return reference.target?._changesFor(this);
+    final changes = registration._changesFor(this);
+    _owner = WeakReference(changes.owner);
+    return changes;
+  }
+
+  /// Called synchronously after construction and before onNewInstance.
+  void init() {}
+
+  /// Called when a managed instance is released. Consumers are disposed first.
+  FutureOr<void> dispose() {}
+
+  /// Evict consumers of this instance immediately and await their cleanup.
+  /// The object decides which changes matter, e.g. a different account ID.
+  Future<void> dependencyChanged() =>
+      _owner?.target?._dependencyChanged(this) ?? Future<void>.value();
+}
+
+class _InstanceChanges extends _Lifetime {
+  _InstanceChanges(this.owner);
+  // A live cache entry or subscriber keeps the first registration available
+  // even when the instance is accessed through a different cache alias.
+  final Manage owner;
+}
+
 class _Lifetime {
   _Lifetime({this.ownsTransients = true});
 
@@ -10,20 +40,20 @@ class _Lifetime {
   int generation = 0;
   final _entries = <_Entry>{};
 
-  Future<void> invalidate({void Function()? publish}) {
+  Future<void> invalidate() {
     generation++;
-    // A disposer may itself clear a source or scope. Its own batch already
+    return release(_entries);
+  }
+
+  static Future<void> release(Iterable<_Entry> affected) {
+    // A disposer may itself invalidate another lifetime. Its own batch already
     // owns those entries and must never wait on itself.
     final enclosing = Zone.current[_releasing] as Set<_Entry>?;
-    final entries = _entries
-        .toList()
-        .reversed
+    final entries = affected
         .where((entry) => enclosing?.contains(entry) != true)
-        .toList();
+        .toList()
+      ..sort((a, b) => b.order.compareTo(a.order));
     final releases = [for (final entry in entries) entry.detach()];
-    // Publish the new source after detaching the old generation and before a
-    // disposal callback can read or replace it.
-    publish?.call();
     if (releases.isEmpty) return Future.value();
     final batch = {...?enclosing, ...entries};
     return runZoned(() => _releaseAll(releases),
@@ -39,11 +69,21 @@ class _Entry<T> {
     }
   }
 
-  factory _Entry.ready(
-          T value, Set<_Lifetime> lifetimes, OnDispose<T>? onDispose) =>
-      _Entry<T>(lifetimes, onDispose, null)..build(() => value);
+  static int _nextOrder = 0;
+  int order = _nextOrder++;
 
-  late T value;
+  void subscribe(_Lifetime lifetime) {
+    if (lifetimes.add(lifetime)) lifetime._entries.add(this);
+  }
+
+  late T _value;
+  _InstanceChanges? _changes;
+  bool _initialized = false;
+  T get value {
+    if (!_initialized) throw StateError('The instance is still initializing.');
+    return _value;
+  }
+
   final Set<_Lifetime> lifetimes;
   final OnDispose<T>? onDispose;
   final void Function()? evict;
@@ -52,12 +92,14 @@ class _Entry<T> {
   bool _building = true;
   bool _hasValue = false;
 
-  T build(Factory<T> factory) {
+  T build(Factory<T> factory, void Function(T) initialize) {
     try {
-      value = factory();
+      _value = factory();
       _hasValue = true;
+      checkActive();
+      initialize(_value);
     } catch (_) {
-      _unregister();
+      if (!_hasValue) _unregister();
       rethrow;
     } finally {
       _building = false;
@@ -81,10 +123,16 @@ class _Entry<T> {
 
   FutureOr<void> _dispose() {
     if (_building) {
-      // The factory triggered this invalidation before returning its value.
+      // The factory or init() triggered invalidation before setup finished.
       return (_built ??= Completer<void>()).future.then((_) => _dispose());
     }
-    if (_hasValue) return onDispose?.call(value);
+    if (!_hasValue) return null;
+    final instance = _value;
+    if (instance is DependencyLifecycle) {
+      if (onDispose == null) return instance.dispose();
+      return _releaseAll([instance.dispose, () => onDispose!(instance)]);
+    }
+    return onDispose?.call(instance);
   }
 
   /// Evict synchronously, before any user callback can re-enter the graph.
@@ -131,7 +179,7 @@ Future<void> _releaseAll(List<FutureOr<void> Function()> releases) async {
 /// Dart keeps a factory's zone in its asynchronous callbacks. Reject lookups
 /// from that zone once any of the inputs to the factory has been invalidated.
 class _Resolution {
-  _Resolution(this.provider, Set<_Lifetime> lifetimes, this.ownsTransients)
+  _Resolution(this.provider, Set<_Lifetime> lifetimes, this._hasOwner)
       : generations = {for (final life in lifetimes) life: life.generation};
 
   static final key = Object();
@@ -139,16 +187,79 @@ class _Resolution {
 
   final Manage provider;
   final Map<_Lifetime, int> generations;
-  final bool ownsTransients;
+  final bool _hasOwner;
+  bool get ownsTransients =>
+      _hasOwner || generations.keys.any((life) => life.ownsTransients);
+  final _transients = <_Entry>{};
+  _Entry? _entry;
   bool building = false;
 
+  // A unique sibling may already have been created when a subsequent input
+  // reveals its instance-specific notification. Enrol both in that lifetime.
+  void track(_Entry entry) {
+    if (!_transients.add(entry)) return;
+    if (ownsTransients) {
+      for (final life in generations.keys) {
+        entry.subscribe(life);
+      }
+    }
+  }
+
+  void observe(
+      Manage input, Iterable<_Lifetime> lifetimes, _InstanceChanges? changes,
+      [Iterable<_Entry> transients = const []]) {
+    if (!building ||
+        !provider._dependencies.any((d) => identical(d._canonical, input))) {
+      return;
+    }
+    final previouslyOwned = ownsTransients;
+    final added = {
+      ...lifetimes,
+      if (changes != null) changes,
+    }..removeWhere(generations.containsKey);
+    for (final life in added) {
+      generations[life] = life.generation;
+    }
+    if (added.isNotEmpty && ownsTransients) {
+      final subscriptions = previouslyOwned ? added : generations.keys;
+      for (final entry in [..._transients, if (_entry != null) _entry!]) {
+        for (final life in subscriptions) {
+          entry.subscribe(life);
+        }
+      }
+    }
+    if (input.scope == ScopeType.unique) {
+      for (final entry in transients) {
+        track(entry);
+      }
+    }
+    // A factory or init() can resolve another declared input while building.
+    _entry?.order = _Entry._nextOrder++;
+  }
+
   R run<R>(R Function() action) {
-    if (identical(current, this)) return action();
+    final parent = current;
+    if (identical(parent, this)) return action();
     building = true;
     try {
-      return runZoned(action, zoneValues: {key: this});
+      final value = runZoned(action, zoneValues: {key: this});
+      parent?.observe(
+          provider,
+          generations.keys,
+          value is DependencyLifecycle ? value._attach(provider) : null,
+          _transients);
+      return value;
+    } catch (_) {
+      final abandoned = {
+        ..._transients,
+        if (_entry?._hasValue == true) _entry!,
+      }.where((e) => e._disposing == null);
+      if (abandoned.isNotEmpty) unawaited(_Lifetime.release(abandoned));
+      rethrow;
     } finally {
       building = false;
+      _transients.clear();
+      _entry = null;
     }
   }
 

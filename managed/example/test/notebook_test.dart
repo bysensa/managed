@@ -9,7 +9,7 @@ import 'package:test/test.dart';
 void main() {
   setUp(() => ExportModule.configure(headingPrefix: '##'));
   tearDown(() async {
-    await AuthModule.user.clear();
+    await AuthModule.session().logout();
     await AppModule.storage.resetMock();
     await Scope.cached.reset();
   });
@@ -21,7 +21,7 @@ void main() {
     expect(Scope.cached.provideUsing(TextCache.new), same(help));
     expect(() => EditorModule.editor(), throwsStateError);
     const anna = User('session-anna', 'Анна');
-    await AuthModule.user.set(anna);
+    await AuthModule.session().login(anna);
     final editor = EditorModule.editor();
     final repo = NotesModule.repository();
     expect(editor.notebook, same(repo));
@@ -29,22 +29,22 @@ void main() {
     editor.edit('plan', 'Музей');
 
     const updated = User('session-anna', 'Анна Волкова');
-    await AuthModule.user.set(updated);
+    await AuthModule.session().login(updated);
     expect(EditorModule.editor(), same(editor));
     expect(AuthModule.user(), same(updated));
     expect(repo.owner, same(anna));
 
     const boris = User('session-boris', 'Борис');
-    await AuthModule.user.set(boris);
+    await AuthModule.session().login(boris);
     expect(await AppModule.storage().read(anna.id, 'plan'), 'Музей');
     expect(() => editor.edit('plan', 'Опоздавшая правка'), throwsStateError);
     expect(await NotesModule.notebook().read('plan'), isNull);
     final next = EditorModule.editor()..edit('plan', 'Парк');
-    await AuthModule.user.clear();
+    await AuthModule.session().logout();
     expect(() => NotesModule.notebook(), throwsStateError);
     expect(AppModule.helpCache(), same(help));
 
-    await AuthModule.user.set(boris);
+    await AuthModule.session().login(boris);
     expect(EditorModule.editor(), isNot(same(next)));
     expect(await NotesModule.notebook().read('plan'), 'Парк');
   });
@@ -52,7 +52,7 @@ void main() {
   test('сброс кэша закрывает редактор и его буфер при активной сессии',
       () async {
     const user = User('reset', 'Вера');
-    await AuthModule.user.set(user);
+    await AuthModule.session().login(user);
     final storage = AppModule.storage();
     final editor = EditorModule.editor()..edit('list', 'Купить хлеб');
     final privateCache = NotesModule.cache();
@@ -61,7 +61,7 @@ void main() {
         dependsOn: [AuthModule.user, AppModule.storage]);
     expect(sameBinding(), same(privateCache));
     final scratch = EditorModule.buffer()..edits['scratch'] = 'Отдельный буфер';
-    addTearDown(scratch.close);
+    addTearDown(scratch.dispose);
     await Scope.unique.reset();
     await Scope.singleton.reset();
     expect(EditorModule.editor(), same(editor));
@@ -80,7 +80,7 @@ void main() {
   test('mock и resetMock переключают хранилище вместе с его потребителями',
       () async {
     const user = User('storage-test', 'Олег');
-    await AuthModule.user.set(user);
+    await AuthModule.session().login(user);
     final original = AppModule.storage();
     final first = EditorModule.editor()..edit('first', 'Оригинал');
     final fake = MemoryStorage();
@@ -101,14 +101,15 @@ void main() {
       () async {
     final storage = PausedWriteStorage();
     await AppModule.storage.mock(storage);
-    await AuthModule.user.set(const User('offline', 'Маша'));
+    await AuthModule.session().login(const User('offline', 'Маша'));
     final editor = EditorModule.editor()..edit('draft', 'Черновик');
     final cache = NotesModule.cache();
     final failure = StateError('Хранилище недоступно');
 
     final save = expectLater(editor.save(), throwsA(same(failure)));
     await storage.started.future;
-    final logout = expectLater(AuthModule.user.clear(), throwsA(same(failure)));
+    final logout =
+        expectLater(AuthModule.session().logout(), throwsA(same(failure)));
     final reset = expectLater(Scope.cached.reset(), throwsA(same(failure)));
     expect(() => EditorModule.editor(), throwsStateError);
     storage.result.completeError(failure);
@@ -147,13 +148,13 @@ void main() {
     await AppModule.storage.mock(storage);
     await storage.write('export-anna', 'route', 'Поезд');
     await storage.write('export-boris', 'route', 'Автобус');
-    await AuthModule.user.set(const User('export-anna', 'Анна'));
+    await AuthModule.session().login(const User('export-anna', 'Анна'));
     final params = ExportNoteParams('route', title: 'Маршрут');
     final oldExport = ExportModule.markdown(params);
     final rejected = expectLater(oldExport, throwsStateError);
 
     await storage.started.future;
-    await AuthModule.user.set(const User('export-boris', 'Борис'));
+    await AuthModule.session().login(const User('export-boris', 'Борис'));
     storage.resume.complete();
     await rejected;
     expect(await ExportModule.markdown(params),

@@ -36,9 +36,36 @@ class _Controller {
   final _Accounts accounts;
 }
 
+class _Session with DependencyLifecycle {
+  _Session(this.sameUser, this.onEnded);
+  final bool Function(_User, _User) sameUser;
+  final void Function(_User)? onEnded;
+  _User? _user;
+  _User get user => _user ?? (throw StateError('Log in first.'));
+
+  Future<void> login(_User next) => _update(next);
+  Future<void> logout() => _update(null);
+  Future<void> _update(_User? next) async {
+    final old = _user;
+    _user = next;
+    if (old == null ? next == null : next != null && sameUser(old, next))
+      return;
+    await dependencyChanged();
+    if (old != null) onEnded?.call(old);
+  }
+}
+
 class _SessionGraph {
+  _SessionGraph(
+      {bool Function(_User, _User)? sameUser, void Function(_User)? onEnded}) {
+    final state = _Session(sameUser ?? (a, b) => a.id == b.id, onEnded);
+    session = Manage(() => state, scope: ScopeType.singleton);
+  }
+
   final disposed = <Object>[];
-  final user = Manage.source<_User>(sameIdentity: (a, b) => a.id == b.id);
+  late final Manage<_Session> session;
+  late final user =
+      Manage(() => Manage.resolve<_Session>().user, dependsOn: [session]);
   final transport = Manage(_Transport.new, scope: ScopeType.singleton);
   late final repository = Manage(
     () => _Repository(Manage.resolve(), Manage.resolve()),
@@ -64,29 +91,29 @@ void main() {
     expect(() => graph.controller(), throwsStateError);
 
     final alice = _User(1, 'Alice');
-    await graph.user.set(alice);
+    await graph.session().login(alice);
     final controller = graph.controller();
     final repository = graph.repository();
     expect(controller.accounts, same(repository));
     expect(repository.user, same(alice));
 
     final refreshed = _User(1, 'Alice Smith');
-    await graph.user.set(refreshed);
+    await graph.session().login(refreshed);
     expect(graph.user(), same(refreshed));
     expect(graph.controller(), same(controller));
     expect(graph.repository(), same(repository));
     expect(graph.disposed, isEmpty);
 
-    await graph.user.clear();
+    await graph.session().logout();
     expect(graph.disposed, [controller, repository]);
     expect(() => graph.user(), throwsStateError);
     expect(() => graph.repository(), throwsStateError);
     expect(() => graph.controller(), throwsStateError);
-    await graph.user.clear();
+    await graph.session().logout();
     expect(graph.disposed, [controller, repository]);
 
     final bob = _User(2, 'Bob');
-    await graph.user.set(bob);
+    await graph.session().login(bob);
     final next = graph.controller();
     expect(next, isNot(same(controller)));
     expect(next.accounts, same(graph.repository()));
@@ -97,10 +124,10 @@ void main() {
 
   test('switching users directly also invalidates their dependents', () async {
     final graph = _SessionGraph();
-    await graph.user.set(_User(1, 'Alice'));
+    await graph.session().login(_User(1, 'Alice'));
     final previous = graph.controller();
     final bob = _User(2, 'Bob');
-    await graph.user.set(bob);
+    await graph.session().login(bob);
     expect(graph.disposed, [previous, previous.accounts]);
     expect(graph.controller().accounts.user, same(bob));
   });
@@ -108,59 +135,68 @@ void main() {
   test('logging back in with the same user starts a new lifetime', () async {
     final graph = _SessionGraph();
     final alice = _User(1, 'Alice');
-    await graph.user.set(alice);
+    await graph.session().login(alice);
     final previous = graph.controller();
-    await graph.user.clear();
-    await graph.user.set(alice);
+    await graph.session().logout();
+    await graph.session().login(alice);
     final next = graph.controller();
     expect(next, isNot(same(previous)));
     expect(next.accounts, isNot(same(previous.accounts)));
     expect(next.accounts.user, same(alice));
   });
 
-  test('an empty source prevents allocation of sibling dependencies', () {
-    final source = Manage.source<_User>();
+  test('a failed session lookup releases an already-created unique sibling',
+      () async {
+    final graph = _SessionGraph();
     var builds = 0;
-    final sibling = Manage(() => ++builds);
+    final released = <int>[];
+    final sibling = Manage(() => ++builds, onDispose: released.add);
     final consumer = Manage(Object.new,
-        scope: ScopeType.cached, dependsOn: [sibling, source]);
-    expect(() => consumer(), throwsStateError);
-    expect(builds, 0);
+        scope: ScopeType.cached, dependsOn: [sibling, graph.user]);
+    expect(consumer.call, throwsStateError);
+    expect(released, [1]);
+    await graph.session().login(_User(1, 'Alice'));
+    consumer();
+    await graph.session().logout();
+    expect(released, [1, 2]);
   });
 
-  test('a source compares object identity by default', () async {
-    final user = Manage.source<_User>();
+  test('a session can choose object identity instead of the account ID',
+      () async {
+    final graph = _SessionGraph(sameUser: identical);
+    final user = graph.user;
     final disposed = <Object>[];
     final consumer = Manage(Object.new,
         scope: ScopeType.cached, dependsOn: [user], onDispose: disposed.add);
     final first = _User(1, 'Alice');
-    await user.set(first);
+    await graph.session().login(first);
     final original = consumer();
-    await user.set(first);
+    await graph.session().login(first);
     expect(consumer(), same(original));
     final equal = _User(1, 'Alice');
     expect(equal, equals(first));
-    await user.set(equal);
+    await graph.session().login(equal);
     expect(consumer(), isNot(same(original)));
     expect(disposed, [original]);
   });
 
-  test('the source disposes its latest snapshot after its consumers', () async {
+  test('a session can release its latest snapshot after its consumers',
+      () async {
     final disposed = <Object>[];
-    final user = Manage.source<_User>(
-        sameIdentity: (a, b) => a.id == b.id, onDispose: disposed.add);
+    final graph = _SessionGraph(onEnded: disposed.add);
+    final user = graph.user;
     final consumer = Manage(Object.new,
         scope: ScopeType.cached, dependsOn: [user], onDispose: disposed.add);
     final alice = _User(1, 'Alice');
     final updated = _User(1, 'Alice Smith');
-    await user.set(alice);
+    await graph.session().login(alice);
     final first = consumer();
-    await user.set(updated);
+    await graph.session().login(updated);
     expect(disposed, isEmpty);
     await Scope.cached.reset();
     expect(disposed, [first]);
     final second = consumer();
-    await user.clear();
+    await graph.session().logout();
     expect(disposed, hasLength(3));
     expect(disposed[1], same(second));
     expect(disposed[2], same(updated));
@@ -170,7 +206,7 @@ void main() {
       () async {
     final graph = _SessionGraph();
     final alice = _User(1, 'Alice');
-    await graph.user.set(alice);
+    await graph.session().login(alice);
     final controller = graph.controller();
     final repository = graph.repository();
 
@@ -186,7 +222,8 @@ void main() {
 
   test('a shared factory only reuses instances with the same inputs', () async {
     final disposed = <Object>[];
-    final user = Manage.source<_User>();
+    final graph = _SessionGraph();
+    final user = graph.user;
     final global = Manage(Object.new, scope: ScopeType.singleton);
     final personal = Manage(Object.new,
         scope: ScopeType.singleton, dependsOn: [user], onDispose: disposed.add);
@@ -194,11 +231,11 @@ void main() {
         scope: ScopeType.singleton, dependsOn: [user], onDispose: disposed.add);
     final appInstance = global();
     expect(() => personal(), throwsStateError);
-    await user.set(_User(1, 'Alice'));
+    await graph.session().login(_User(1, 'Alice'));
     final userInstance = personal();
     expect(alias(), same(userInstance));
     expect(userInstance, isNot(same(appInstance)));
-    await user.clear();
+    await graph.session().logout();
     expect(disposed, [userInstance]);
     expect(() => alias(), throwsStateError);
     expect(global(), same(appInstance));
@@ -253,7 +290,8 @@ void main() {
 
   test('overlapping clears wait for disposal and preserve the new generation',
       () async {
-    final user = Manage.source<_User>();
+    final graph = _SessionGraph();
+    final user = graph.user;
     final disposed = <String>[];
     final gate = Completer<void>();
     final repo = Manage(
@@ -272,13 +310,13 @@ void main() {
         disposed.add('end ${value.accounts.user.id}');
       },
     );
-    await user.set(_User(1, 'Alice'));
+    await graph.session().login(_User(1, 'Alice'));
     final oldController = controller();
-    final logout = user.clear();
+    final logout = graph.session().logout();
     expect(() => controller(), throwsStateError);
     var resetFinished = false;
     final reset = Scope.cached.reset().then((_) => resetFinished = true);
-    final login = user.set(_User(2, 'Bob'));
+    final login = graph.session().login(_User(2, 'Bob'));
     final next = controller();
     await Future<void>.value();
     expect(resetFinished, isFalse);
@@ -300,16 +338,16 @@ void main() {
       dependsOn: [graph.controller],
       onDispose: (_) async => throw error,
     );
-    await graph.user.set(_User(1, 'Alice'));
+    await graph.session().login(_User(1, 'Alice'));
     final previous = consumer();
     final controller = graph.controller();
-    await expectLater(graph.user.clear(), throwsA(same(error)));
+    await expectLater(graph.session().logout(), throwsA(same(error)));
     expect(graph.disposed, [controller, controller.accounts]);
     expect(() => consumer(), throwsStateError);
 
-    await graph.user.set(_User(2, 'Bob'));
+    await graph.session().login(_User(2, 'Bob'));
     expect(consumer(), isNot(same(previous)));
-    await expectLater(graph.user.clear(), throwsA(same(error)));
+    await expectLater(graph.session().logout(), throwsA(same(error)));
   });
 
   test('a disposer can await a scope reset during logout', () async {
@@ -321,10 +359,10 @@ void main() {
         dependsOn: [graph.controller],
         scope: ScopeType.cached,
         onDispose: (_) => Scope.cached.reset());
-    await graph.user.set(_User(1, 'Alice'));
+    await graph.session().login(_User(1, 'Alice'));
     consumer();
     final controller = graph.controller();
-    await graph.user.clear();
+    await graph.session().logout();
     expect(graph.disposed, [controller, controller.accounts]);
     expect(disposed, [other]);
   });
@@ -338,11 +376,11 @@ void main() {
       scope: ScopeType.cached,
       dependsOn: [graph.user],
     );
-    await graph.user.set(_User(1, 'Alice'));
+    await graph.session().login(_User(1, 'Alice'));
     final old = lookup();
-    await graph.user.clear();
+    await graph.session().logout();
     final bob = _User(2, 'Bob');
-    await graph.user.set(bob);
+    await graph.session().login(bob);
     final next = lookup();
     final rejected = expectLater(old, throwsStateError);
     gate.complete();
@@ -353,7 +391,7 @@ void main() {
   test('overriding a dependency invalidates consumers of its typed view',
       () async {
     final graph = _SessionGraph();
-    await graph.user.set(_User(1, 'Alice'));
+    await graph.session().login(_User(1, 'Alice'));
     final original = graph.controller();
     final mock = _Repository(_User(2, 'Test'), _Transport());
     await graph.repository.mock(mock);
@@ -371,7 +409,7 @@ void main() {
     final consumer = Manage(
       () {
         final old = Manage.resolve<_Controller>();
-        logout = graph.user.clear();
+        logout = graph.session().logout();
         return old.accounts.user;
       },
       dependsOn: [graph.controller],
@@ -379,7 +417,7 @@ void main() {
       onDispose: graph.disposed.add,
     );
     final alice = _User(1, 'Alice');
-    await graph.user.set(alice);
+    await graph.session().login(alice);
     final controller = graph.controller();
     expect(() => consumer(), throwsStateError);
     await logout;

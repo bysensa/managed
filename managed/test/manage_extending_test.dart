@@ -170,33 +170,33 @@ abstract class Module {
   );
 }
 
+class _Session with DependencyLifecycle {}
+
 void main() {
   test('a generated provider binds parameters once per cached lifetime',
       () async {
-    final source = Manage.source<String>();
+    final session = Manage(_Session.new, scope: ScopeType.singleton);
     final disposed = <Object>[];
     final middle = ManageMiddle(MiddleProvider.managed,
         dependsOn: [Module.empty], onDispose: disposed.add);
     final some = ManageSome(SomeProvider.managed,
         scope: ScopeType.cached,
-        dependsOn: [source, middle],
+        dependsOn: [session, middle],
         onDispose: disposed.add);
     SomeParams params(String text) => SomeParams(
         number: 42,
         flag: true,
         middle: MiddleParams(empty: EmptyParams(text: text)));
 
-    await source.set('alice');
     final first = some(params('hello'));
     expect(first.middle.empty.text, 'hello');
     expect(some(params('ignored on a cache hit')), same(first));
-    await source.clear();
+    await session().dependencyChanged();
     expect(disposed, [first, first.middle]);
-    await source.set('bob');
     final next = some(params('world'));
     expect(next, isNot(same(first)));
     expect(next.middle.empty.text, 'world');
-    await source.clear();
+    await session().dependencyChanged();
   });
 
   test('should provide', () {

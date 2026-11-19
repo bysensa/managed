@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Generated registrations participate in instance lifecycle notifications and
+  call the hooks of classes that mix in `DependencyLifecycle` through `Manage`.
 - Preserve constructor defaults, nullability, generic bounds and nested types.
   Bind repeated unique inputs independently and reuse providers across packages.
 - Select public constructors and binding names through `@ManagedType`.

@@ -49,28 +49,29 @@ sufficient defaults can be called as `StyleProvider.provider()`.
 
 ## Bind a session to a generated graph
 
-Given `Account`, `UserCache(Account user)` and `Editor(UserCache cache)`
-annotated with `unique`, `cached` and `singleton` respectively, register the
-session and its consumers once in your application module.
+An annotated session can mix in `DependencyLifecycle`. Its `update` method
+stores the latest account and calls `dependencyChanged()` when the account ID
+changes or the user logs out. Configure the generated registrations once in a
+global module.
 
 ```dart
-final session = Manage.source<Account>(sameIdentity: (a, b) => a.id == b.id);
-final userCache = UserCacheProvider.register(
+final session = AccountSessionProvider.provider;
+final user = Manage(
+  () => Manage.resolve<AccountSession>().user,
   dependsOn: [session],
-  onDispose: (cache) => cache.close(),
 );
-final editor = EditorProvider.register(dependsOn: [userCache]);
+final cache = AccountCacheProvider.register(dependsOn: [user]);
+final editor = EditorProvider.register(dependsOn: [cache]);
 ```
 
-A registration in `dependsOn` replaces the inferred constructor dependency of
-the same `managedType`. Other entries add lifecycle dependencies. After
-`await session.set(account)`, `editor()` receives that account through its
-cache. A refresh with the same ID updates the source and preserves the open
-editor. Both `await session.clear()` and `await Scope.cached.reset()` evict
-the editor before disposing its cache. The next valid call builds a fresh
-graph. Registrations also accept `onNewInstance` and default `params`.
-As with `Manage`, two registrations of the same cached factory share an
-instance when they declare the same inputs.
+Here `AccountCache(Account user)` is cached and `Editor(AccountCache cache)`
+is a singleton. An explicit input replaces the inferred registration of the
+same type. Other entries add lifecycle dependencies. A refresh with the same
+ID keeps the editor. Both `await session().update(null)` and
+`await Scope.cached.reset()` release the editor before its cache. Classes
+can implement `init()` and `dispose()` directly through the mixin.
+Registrations also accept `params`, `onNewInstance` and `onDispose`.
+[Executable session example](test/fixtures/client/test/bindings_test.dart.fixture)
 
 ## Constructor inputs
 
@@ -113,7 +114,7 @@ needs support from the analyzer used by the builder.
 
 ## Run the example and tests
 
-The notebook generates its Markdown providers and uses a session source for
+The notebook generates its Markdown providers and uses a session singleton for
 its editor. [Notebook walkthrough](../managed/example/README.md)
 
 Run `dart test` in `managed_gen`. The integration suite builds two temporary

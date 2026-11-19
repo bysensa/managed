@@ -1,7 +1,8 @@
 import 'package:client/module.dart';
 import 'package:client/services.dart';
+import 'package:managed/managed.dart';
 
-void main() {
+Future<void> main() async {
   final plain = Settings();
   final generated = SettingsProvider.provider();
   final explicit =
@@ -19,5 +20,16 @@ void main() {
   ));
   if (slots.left.value != 1 || slots.right.value != 2) {
     throw StateError('Generic constructor arguments were mixed');
+  }
+  final session = AccountSessionProvider.provider;
+  final user =
+      Manage(() => Manage.resolve<AccountSession>().user, dependsOn: [session]);
+  final cache = AccountCacheProvider.register(dependsOn: [user]);
+  final editor = EditorProvider.register(dependsOn: [cache]);
+  await session().update(Account(1, 'Alice'));
+  final open = editor();
+  await session().update(null);
+  if (open.cache.starts != 1 || open.cache.stops != 1 || open.stops != 1) {
+    throw StateError('Generated lifecycle hooks did not run once per instance');
   }
 }

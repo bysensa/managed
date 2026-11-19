@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Replace `Manage.source` with `DependencyLifecycle`. Session objects can now
+  signal identity changes with `dependencyChanged()` and implement synchronous
+  `init()` and synchronous or asynchronous `dispose()` themselves.
 - Allow `@ManagedType` to select a constructor and override the generated
   binding name.
 

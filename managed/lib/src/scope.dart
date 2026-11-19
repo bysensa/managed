@@ -49,25 +49,46 @@ class _InstanceScope implements Scope {
     Factory<T> factory,
     Set<_Lifetime> lifetimes,
     OnNewInstance<T>? onNewInstance,
-    OnDispose<T>? onDispose,
-  ) {
+    OnDispose<T>? onDispose, {
+    _Resolution? resolution,
+  }) {
     final cache = _instances;
-    if (cache == null && (onDispose == null || lifetimes.isEmpty)) {
-      final value = factory();
-      _Resolution.current?.check();
-      onNewInstance?.call(value);
-      _Resolution.current?.check();
-      return value;
-    }
+    final context = resolution ?? _Resolution.current;
     late final _Entry<T> entry;
     entry = _Entry<T>(lifetimes, onDispose, () {
       if (identical(cache?[key], entry)) cache?.remove(key);
     });
-    final value = entry.build(factory);
-    cache?[key] = entry;
-    onNewInstance?.call(value);
-    entry.checkActive();
-    return value;
+    resolution?._entry = entry;
+    try {
+      final value = entry.build(factory, (instance) {
+        context?.check();
+        cache?[key] = entry;
+        if (instance is DependencyLifecycle) {
+          if (resolution != null) {
+            entry._changes = instance._attach(resolution.provider);
+          }
+          instance.init();
+          entry.checkActive();
+          context?.check();
+        }
+        entry._initialized = true;
+        onNewInstance?.call(instance);
+        context?.check();
+      });
+      if (cache == null) {
+        if (value is DependencyLifecycle || onDispose != null) {
+          resolution?.track(entry);
+        } else {
+          entry._unregister();
+        }
+      }
+      return value;
+    } catch (_) {
+      if (resolution == null && entry._hasValue && entry._disposing == null) {
+        unawaited(_Lifetime.release([entry]));
+      }
+      rethrow;
+    }
   }
 
   @override
