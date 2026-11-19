@@ -8,6 +8,11 @@
   Generated providers support per-type registrations and lifecycle callbacks.
 - Detect cycles, inaccessible signatures and name conflicts during generation.
   Track changes to part files and dependency packages in incremental builds.
+- Generated `register()` accepts a `resolutionKey`, passed to `Manage`.
+  Regenerate `module.dart` to use it.
+- Generated code imports `package:managed/codegen.dart` and passes `Params`
+  through `callWithParams`. Application code keeps importing
+  `package:managed/managed.dart`, which no longer exposes `Params`.
 
 ## 0.0.2-dev.1
 

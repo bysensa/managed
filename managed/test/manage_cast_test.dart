@@ -32,4 +32,10 @@ void main() {
     );
     expect(() => child.as<Foreign>(), throwsStateError);
   });
+
+  test('a narrowing view is rejected with a StateError', () {
+    // The factory returns Child, but the registration only promises Base.
+    final base = Manage<Base>(Child.new);
+    expect(() => base.as<Child>(), throwsStateError);
+  });
 }

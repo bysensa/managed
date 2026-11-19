@@ -67,7 +67,8 @@ class ParamsProducer extends Producer {
       keys.add(p.keyType);
       final arg = p.hasField ? 'this.${p.field}' : '';
       final provider = 'dependencies[${p.keyType}]!';
-      var expression = '$provider($arg) as ${p.keyType}';
+      var expression = '$provider.callWithParams(${p.hasField ? arg : 'null'}) '
+          'as ${p.keyType}';
       if (p.hasField && p.nullable)
         expression = '$arg == null ? null : $expression';
       if (p.deferred) expression = '${p.present} ? ($expression) : null';

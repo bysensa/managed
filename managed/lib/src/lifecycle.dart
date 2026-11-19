@@ -1,4 +1,4 @@
-part of '../managed.dart';
+part of 'manage.dart';
 
 /// Implement on a dependency that owns resources or signals a change of state.
 /// A shared instance stays available while its consumers are recreated.
@@ -56,8 +56,11 @@ class _Lifetime {
     final releases = [for (final entry in entries) entry.detach()];
     if (releases.isEmpty) return Future.value();
     final batch = {...?enclosing, ...entries};
+    // Disposers must not inherit the resolution of the code that triggered
+    // the invalidation, e.g. a stream callback registered inside a factory.
     return runZoned(() => _releaseAll(releases),
-        zoneValues: {_releasing: batch}).whenComplete(batch.clear);
+            zoneValues: {_releasing: batch, _Resolution.key: null})
+        .whenComplete(batch.clear);
   }
 }
 
@@ -91,6 +94,12 @@ class _Entry<T> {
   Completer<void>? _built;
   bool _building = true;
   bool _hasValue = false;
+
+  // Where the entry was cached, so a disposer can still reach it while the
+  // cleanup walks from consumers to inputs.
+  Map<Object, _Entry>? cache;
+  Object? cacheKey;
+  bool _released = false;
 
   T build(Factory<T> factory, void Function(T) initialize) {
     try {
@@ -144,6 +153,7 @@ class _Entry<T> {
     evict?.call();
 
     return () {
+      _released = true;
       try {
         final result = _dispose();
         if (result is Future<void>) {

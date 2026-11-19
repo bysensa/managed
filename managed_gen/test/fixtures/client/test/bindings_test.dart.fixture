@@ -170,6 +170,23 @@ void main() {
     expect(custom(SessionCacheParams(owner: 'custom')).owner, 'custom');
   });
 
+  test('generated registrations accept a resolution key', () async {
+    await Scope.cached.reset();
+    final first = SessionCacheProvider.register(
+        params: SessionCacheParams(owner: 'first'), resolutionKey: #first);
+    final second = SessionCacheProvider.register(
+        params: SessionCacheParams(owner: 'second'), resolutionKey: #second);
+    final owners = Manage(
+        () => [
+              resolve<SessionCache>(#first).owner,
+              resolve<SessionCache>(#second).owner,
+            ],
+        dependsOn: [first, second]);
+    expect(first.resolutionKey, #first);
+    expect(owners(), ['first', 'second']);
+    await Scope.cached.reset();
+  });
+
   test(
       'params are checked on cache misses and explicit params override scope defaults',
       () async {

@@ -104,10 +104,35 @@ retains ownership of the object it supplies as a mock.
 - `singleton` reuses an instance while its declared inputs remain valid.
   A shared session can signal repeatedly over its lifetime.
 
-Within a scope, registrations with the same factory and declared inputs share
-a cache entry. A typed view from `.as<T>()` observes the original registration.
-Two consumers that receive distinct unique instances observe the changes of
-their respective inputs.
+Within a scope, registrations with the same factory, declared inputs and
+resolution key share a cache entry. A typed view from `.as<T>()` observes the
+original registration. Two consumers that receive distinct unique instances
+observe the changes of their respective inputs.
+
+## Several inputs of one type
+
+Give each registration a `resolutionKey` and pass it to `resolve`. A key can
+be any object: an enum value, a module type or a string. The top-level
+`resolve` is a shorthand for `Manage.resolve`.
+
+```dart
+enum Texts { help, notes }
+
+abstract final class TextModule {
+  static final help = Manage(TextCache.new,
+      scope: ScopeType.cached, resolutionKey: Texts.help);
+  static final notes = Manage(TextCache.new,
+      scope: ScopeType.cached,
+      dependsOn: [AuthModule.user],
+      resolutionKey: Texts.notes);
+  static final search = Manage(
+    () => Search(resolve(Texts.help), resolve(Texts.notes)),
+    dependsOn: [help, notes],
+  );
+}
+```
+
+A lookup without a key still finds an input by its type.
 
 The offline notebook includes login, profile refresh, account switching, cache
 resets, generated providers and tests with replacement storage.

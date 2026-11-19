@@ -141,6 +141,22 @@ void main() {
     expect(template(params).render('Чай', 'Ира'), '# Список\n\nЧай');
   });
 
+  test('разные настройки кэшированного стиля различаются по resolutionKey',
+      () {
+    final headings = MarkdownStyleProvider.register(
+        params: MarkdownStyleParams(headingPrefix: '#'),
+        resolutionKey: #headings);
+    final quotes = MarkdownStyleProvider.register(
+        params: MarkdownStyleParams(headingPrefix: '>'),
+        resolutionKey: #quotes);
+    expect(headings().headingPrefix, '#');
+    expect(quotes().headingPrefix, '>');
+    // Without a key, registrations of one factory share the cached instance.
+    final unkeyed = MarkdownStyleProvider.register(
+        params: MarkdownStyleParams(headingPrefix: '>'));
+    expect(unkeyed(), same(MarkdownStyleProvider.provider()));
+  });
+
   test(
       'экспорт, начатый до смены аккаунта, не подпишется именем нового пользователя',
       () async {
@@ -149,15 +165,14 @@ void main() {
     await storage.write('export-anna', 'route', 'Поезд');
     await storage.write('export-boris', 'route', 'Автобус');
     await AuthModule.session().login(const User('export-anna', 'Анна'));
-    final params = ExportNoteParams('route', title: 'Маршрут');
-    final oldExport = ExportModule.markdown(params);
+    final oldExport = ExportModule.markdown('route', title: 'Маршрут');
     final rejected = expectLater(oldExport, throwsStateError);
 
     await storage.started.future;
     await AuthModule.session().login(const User('export-boris', 'Борис'));
     storage.resume.complete();
     await rejected;
-    expect(await ExportModule.markdown(params),
+    expect(await ExportModule.markdown('route', title: 'Маршрут'),
         '## Маршрут\n\nАвтобус\n\n— Борис');
   });
 }

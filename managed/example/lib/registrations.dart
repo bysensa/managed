@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:managed/managed.dart';
 
 import 'markdown.dart';
@@ -58,51 +56,36 @@ abstract final class EditorModule {
   );
 }
 
-class ExportNoteParams extends Params {
-  ExportNoteParams(this.key, {required this.title, this.includeAuthor = true});
-
-  final String key;
-  final String title;
-  final bool includeAuthor;
-
-  @override
-  Type get targetType => Future<String>;
-
-  @override
-  void inject(ZoneValues values, Map<Type, Manage> dependencies) {
-    values[#noteKey] = key;
-    final params = MarkdownTemplateParams(
-      heading: MarkdownHeadingParams(title: title),
-      includeAuthor: includeAuthor,
-    );
-    // Для шаблона нужны параметры. Оставшиеся регистрации пользователя
-    // и блокнота Manage вызовет сам.
-    final template = dependencies.remove(MarkdownTemplate)!;
-    values[MarkdownTemplate] = template(params);
-  }
-}
-
 abstract final class ExportModule {
   static void configure({required String headingPrefix}) {
     MarkdownStyleProvider.params =
         MarkdownStyleParams(headingPrefix: headingPrefix);
   }
 
-  static final markdown = Manage<Future<String>>(
-    () async {
-      final key = Zone.current[#noteKey] as String;
-      final notebook = Manage.resolve<Notebook>();
-      final template = Manage.resolve<MarkdownTemplate>();
-      final body = await notebook.read(key);
-      // После await resolve проверит, действует ли сессия этого экспорта.
-      final author = Manage.resolve<User>();
-      if (body == null) throw StateError('Заметка «$key» не найдена');
-      return template.render(body, author.name);
-    },
-    dependsOn: [
-      AuthModule.user,
-      NotesModule.notebook,
-      MarkdownTemplateProvider.provider,
-    ],
-  );
+  /// Each export creates its own unique registration. The arguments are
+  /// captured by the factory closure; `dependsOn` supplies the user and notebook.
+  static Future<String> markdown(
+    String key, {
+    required String title,
+    bool includeAuthor = true,
+  }) {
+    final template = MarkdownTemplateProvider.register(
+      params: MarkdownTemplateParams(
+        heading: MarkdownHeadingParams(title: title),
+        includeAuthor: includeAuthor,
+      ),
+    );
+    return Manage<Future<String>>(
+      () async {
+        final notebook = Manage.resolve<Notebook>();
+        final template = Manage.resolve<MarkdownTemplate>();
+        final body = await notebook.read(key);
+        // После await resolve проверит, действует ли сессия этого экспорта.
+        final author = Manage.resolve<User>();
+        if (body == null) throw StateError('Заметка «$key» не найдена');
+        return template.render(body, author.name);
+      },
+      dependsOn: [AuthModule.user, NotesModule.notebook, template],
+    )();
+  }
 }

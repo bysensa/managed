@@ -33,6 +33,34 @@ class _Consumer with DependencyLifecycle {
 
 class _Signal with DependencyLifecycle {}
 
+/// The container of the current user.
+class _UserHolder with DependencyLifecycle {
+  String? _user = 'alice';
+  String get user => _user ?? (throw StateError('Log in first.'));
+
+  Future<void> switchTo(String? next) {
+    _user = next;
+    return dependencyChanged();
+  }
+}
+
+class _Repository {
+  _Repository(this.user);
+  final String user;
+  final saved = <String>[];
+}
+
+/// Depends on the user and logs out when the session times out. Stream
+/// callbacks keep the zone of the factory that subscribed, as Dart zones do
+/// for every async callback.
+class _SessionWatcher {
+  _SessionWatcher(_UserHolder holder, Stream<void> timeouts) {
+    timeouts.listen((_) => logout = holder.switchTo(null));
+  }
+
+  Future<void>? logout;
+}
+
 void main() {
   tearDown(Scope.cached.reset);
 
@@ -314,5 +342,88 @@ void main() {
     expect(unique.stops, 0);
     await unique.dispose();
     expect(unique.stops, 1);
+  });
+
+  group('a disposer reaches services closer to the root', () {
+    late StreamController<void> timeouts;
+    late List<String> journal;
+    late Manage<_UserHolder> holder;
+    late Manage<String> user;
+    late Manage<_Repository> repository;
+    late Manage<Object> editor;
+    late Manage<_SessionWatcher> watcher;
+
+    setUp(() {
+      timeouts = StreamController<void>(sync: true);
+      journal = [];
+      // A fresh closure per test: a shared tear-off would share the singleton.
+      holder = Manage(() => _UserHolder(), scope: ScopeType.singleton);
+      // Independent of the user, lives for the whole app.
+      final storage = Manage(() => journal, scope: ScopeType.singleton);
+      user =
+          Manage(() => Manage.resolve<_UserHolder>().user, dependsOn: [holder]);
+      // Root: depends on the user container.
+      repository = Manage(() => _Repository(Manage.resolve()),
+          scope: ScopeType.cached, dependsOn: [user]);
+      // Leaf: its cleanup uses its input and an unrelated service.
+      editor = Manage(Object.new,
+          scope: ScopeType.cached,
+          dependsOn: [repository],
+          onDispose: (_) {
+            repository().saved.add('draft');
+            storage().add('editor closed');
+          });
+      watcher = Manage(
+          () => _SessionWatcher(Manage.resolve(), timeouts.stream),
+          scope: ScopeType.cached,
+          dependsOn: [holder]);
+    });
+
+    tearDown(() async {
+      await Scope.cached.reset().catchError((_) {});
+      // close() completes only after a listener receives done; do not await.
+      unawaited(timeouts.close());
+    });
+
+    test('the UI switches the user: the draft goes to the old repository',
+        () async {
+      final old = repository();
+      editor();
+      await holder().switchTo('bob');
+      expect({'alice': old.saved, 'bob': repository().saved}, {
+        'alice': ['draft'],
+        'bob': <String>[],
+      });
+    });
+
+    test('the UI logs out: the draft goes to the old repository', () async {
+      final old = repository();
+      editor();
+      await holder().switchTo(null);
+      expect(old.saved, ['draft']);
+    });
+
+    test('the watcher logs out on timeout: the cleanup still reaches services',
+        () async {
+      final w = watcher();
+      final old = repository();
+      editor();
+      timeouts.add(null);
+      await w.logout;
+      expect(old.saved, ['draft']);
+      expect(journal, ['editor closed']);
+    });
+
+    test('an input cannot reach a consumer already released by the cleanup',
+        () async {
+      late Manage<Object> consumer;
+      final input = Manage(() => Object(),
+          scope: ScopeType.cached,
+          dependsOn: [user],
+          onDispose: (_) => consumer());
+      consumer = Manage(Object.new, scope: ScopeType.cached, dependsOn: [input]);
+      consumer();
+      await expectLater(holder().switchTo('bob'), throwsStateError);
+    });
   });
 }

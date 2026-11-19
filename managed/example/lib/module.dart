@@ -1,7 +1,7 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 import "dart:core" as _core;
 import "dart:async" as _async;
-import "package:managed/managed.dart" as _m;
+import "package:managed/codegen.dart" as _m;
 import "package:managed_notebook_example/markdown.dart" as _i1;
 
 class _RequiredParams extends _m.Params {
@@ -39,19 +39,21 @@ mixin MarkdownHeadingProvider on _m.Manage<_i1.MarkdownHeading> {
           {MarkdownHeadingParams? params,
           _core.List<_m.Manage> dependsOn = const [],
           _m.OnNewInstance<_i1.MarkdownHeading>? onNewInstance,
-          _m.OnDispose<_i1.MarkdownHeading>? onDispose}) =>
+          _m.OnDispose<_i1.MarkdownHeading>? onDispose,
+          _core.Object? resolutionKey}) =>
       ManageMarkdownHeading(_managed,
           scope: _m.ScopeType.unique,
           dependsOn: dependsOn,
           onNewInstance: onNewInstance,
-          onDispose: onDispose)
+          onDispose: onDispose,
+          resolutionKey: resolutionKey)
         .._defaults = params;
   static _i1.MarkdownHeading _managed() =>
       (_async.Zone.current[MarkdownHeadingParams] as _i1.MarkdownHeading
           Function())();
   @_core.override
-  _i1.MarkdownHeading call([covariant MarkdownHeadingParams? params]) =>
-      super.call(params ??
+  _i1.MarkdownHeading call([MarkdownHeadingParams? params]) =>
+      this.callWithParams(params ??
           this._defaults ??
           _RequiredParams(_i1.MarkdownHeading, "MarkdownHeadingParams"));
 }
@@ -81,19 +83,21 @@ mixin MarkdownStyleProvider on _m.Manage<_i1.MarkdownStyle> {
           {MarkdownStyleParams? params,
           _core.List<_m.Manage> dependsOn = const [],
           _m.OnNewInstance<_i1.MarkdownStyle>? onNewInstance,
-          _m.OnDispose<_i1.MarkdownStyle>? onDispose}) =>
+          _m.OnDispose<_i1.MarkdownStyle>? onDispose,
+          _core.Object? resolutionKey}) =>
       ManageMarkdownStyle(_managed,
           scope: _m.ScopeType.cached,
           dependsOn: dependsOn,
           onNewInstance: onNewInstance,
-          onDispose: onDispose)
+          onDispose: onDispose,
+          resolutionKey: resolutionKey)
         .._defaults = params;
   static _i1.MarkdownStyle _managed() =>
       (_async.Zone.current[MarkdownStyleParams] as _i1.MarkdownStyle
           Function())();
   @_core.override
-  _i1.MarkdownStyle call([covariant MarkdownStyleParams? params]) =>
-      super.call(params ??
+  _i1.MarkdownStyle call([MarkdownStyleParams? params]) =>
+      this.callWithParams(params ??
           _defaults ??
           MarkdownStyleProvider.params ??
           _RequiredParams(_i1.MarkdownStyle, "MarkdownStyleParams"));
@@ -111,10 +115,11 @@ class MarkdownTemplateParams extends _m.Params {
   @_core.override
   void inject(
       _m.ZoneValues values, _core.Map<_core.Type, _m.Manage> dependencies) {
-    final _input0 = dependencies[_i1.MarkdownStyle]!() as _i1.MarkdownStyle;
+    final _input0 = dependencies[_i1.MarkdownStyle]!.callWithParams(null)
+        as _i1.MarkdownStyle;
     values[_i1.MarkdownStyle] = _input0;
-    final _input1 =
-        dependencies[_i1.MarkdownHeading]!(this.heading) as _i1.MarkdownHeading;
+    final _input1 = dependencies[_i1.MarkdownHeading]!
+        .callWithParams(this.heading) as _i1.MarkdownHeading;
     values[_i1.MarkdownHeading] = _input1;
     values[#includeAuthor] = this.includeAuthor;
     dependencies.remove(_i1.MarkdownStyle);
@@ -132,7 +137,8 @@ mixin MarkdownTemplateProvider on _m.Manage<_i1.MarkdownTemplate> {
           {MarkdownTemplateParams? params,
           _core.List<_m.Manage> dependsOn = const [],
           _m.OnNewInstance<_i1.MarkdownTemplate>? onNewInstance,
-          _m.OnDispose<_i1.MarkdownTemplate>? onDispose}) =>
+          _m.OnDispose<_i1.MarkdownTemplate>? onDispose,
+          _core.Object? resolutionKey}) =>
       ManageMarkdownTemplate(_managed,
           scope: _m.ScopeType.unique,
           dependsOn: [
@@ -144,14 +150,15 @@ mixin MarkdownTemplateProvider on _m.Manage<_i1.MarkdownTemplate> {
             ...dependsOn
           ],
           onNewInstance: onNewInstance,
-          onDispose: onDispose)
+          onDispose: onDispose,
+          resolutionKey: resolutionKey)
         .._defaults = params;
   static _i1.MarkdownTemplate _managed() =>
       (_async.Zone.current[MarkdownTemplateParams] as _i1.MarkdownTemplate
           Function())();
   @_core.override
-  _i1.MarkdownTemplate call([covariant MarkdownTemplateParams? params]) =>
-      super.call(params ??
+  _i1.MarkdownTemplate call([MarkdownTemplateParams? params]) =>
+      this.callWithParams(params ??
           this._defaults ??
           _RequiredParams(_i1.MarkdownTemplate, "MarkdownTemplateParams"));
 }

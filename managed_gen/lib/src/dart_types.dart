@@ -11,10 +11,13 @@ String dartString(String value) => jsonEncode(value).replaceAll(r'$', r'\$');
 /// generics, records, function signatures, bounds and typedefs.
 class DartTypes {
   final _typeNames = <TypeParameterElement, String>{};
+  /// Generated code reaches the runtime, including its Params support, here.
+  static const _runtime = 'package:managed/codegen.dart';
+
   final imports = <String, String>{
     'dart:core': '_core',
     'dart:async': '_async',
-    'package:managed/managed.dart': '_m',
+    _runtime: '_m',
   };
 
   static Uri libraryUri(LibraryElement library) {
@@ -38,7 +41,10 @@ class DartTypes {
           'Expose a public type or typedef for the generated API.',
           element: element);
     }
-    return '${prefix(libraryUri(element.library!).toString())}.${element.displayName}';
+    final uri = libraryUri(element.library!).toString();
+    // The runtime is implemented under src/ and exported by codegen.dart.
+    final library = uri.startsWith('package:managed/src/') ? _runtime : uri;
+    return '${prefix(library)}.${element.displayName}';
   }
 
   String arguments(Iterable<DartType> types) =>

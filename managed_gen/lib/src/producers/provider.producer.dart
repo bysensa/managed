@@ -59,10 +59,12 @@ class ProviderProducer extends Producer {
     out.writeln('$params? $defaults;');
     out.writeln('static $registration register${b.formals}({$params? params, '
         '_core.List<_m.Manage> dependsOn = const [], _m.OnNewInstance<${b.target}>? onNewInstance, '
-        '_m.OnDispose<${b.target}>? onDispose}) => $registration(_managed${b.arguments}, '
+        '_m.OnDispose<${b.target}>? onDispose, _core.Object? resolutionKey}) => '
+        '$registration(_managed${b.arguments}, '
         'scope: _m.ScopeType.${b.scope.name}, '
         'dependsOn: $inputs, '
-        'onNewInstance: onNewInstance, onDispose: onDispose)..$defaults = params;');
+        'onNewInstance: onNewInstance, onDispose: onDispose, '
+        'resolutionKey: resolutionKey)..$defaults = params;');
     out.writeln('static ${b.target} _managed${b.formals}() => '
         '(_async.Zone.current[$params] as ${b.target} Function())();');
     final fallback = b.requiresParams
@@ -72,8 +74,8 @@ class ProviderProducer extends Producer {
         ? '_defaults ?? $provider.params'
         : 'this.$defaults';
     out.writeln(
-        '@_core.override ${b.target} call([covariant $params? params]) => '
-        'super.call(params ?? $configured ?? $fallback);');
+        '@_core.override ${b.target} call([$params? params]) => '
+        'this.callWithParams(params ?? $configured ?? $fallback);');
     out.writeln('}');
     return Code(out.toString());
   }

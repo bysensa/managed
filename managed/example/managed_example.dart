@@ -1,4 +1,5 @@
 import 'package:managed/managed.dart';
+import 'package:managed_notebook_example/module.dart';
 import 'package:managed_notebook_example/notebook.dart';
 import 'package:managed_notebook_example/registrations.dart';
 
@@ -13,8 +14,13 @@ Future<void> showRoute(Provider<Notebook> openNotebook) async {
 Future<void> main(List<String> arguments) async {
   ExportModule.configure(headingPrefix: '##');
   if (arguments.contains('--graph')) {
-    printGraph(
-        {AppModule.helpCache, EditorModule.editor, ExportModule.markdown});
+    // An export creates a registration per call. The graph shows its
+    // permanent part, the generated template.
+    printGraph({
+      AppModule.helpCache,
+      EditorModule.editor,
+      MarkdownTemplateProvider.provider,
+    });
     return;
   }
   try {
@@ -73,7 +79,7 @@ Future<void> runNotebook() async {
       'в снимке при открытии блокнота — ${repository.owner.name}');
   print('  Редактор до и после обновления — '
       '${instanceName(editor)} и ${instanceName(EditorModule.editor())}');
-  print(await ExportModule.markdown(ExportNoteParams(route, title: 'Маршрут')));
+  print(await ExportModule.markdown(route, title: 'Маршрут'));
 
   print('\nАнна сбрасывает кэш с несохранённой правкой');
   editor.edit(route, 'Поезд до Выборга в 09:30');
@@ -83,7 +89,9 @@ Future<void> runNotebook() async {
   print('  Сессия ${AuthModule.user().id}, редактор ${instanceName(reopened)}, '
       'хранилище ${instanceName(AppModule.storage())}');
   print(await ExportModule.markdown(
-    ExportNoteParams(route, title: 'Уточнённый маршрут', includeAuthor: false),
+    route,
+    title: 'Уточнённый маршрут',
+    includeAuthor: false,
   ));
   final newHelp = AppModule.helpCache()..put('save', 'Ctrl+S');
 

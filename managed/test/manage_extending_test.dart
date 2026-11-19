@@ -1,7 +1,8 @@
 import 'dart:async';
 
 import 'package:managed/annotations.dart';
-import 'package:managed/managed.dart';
+// The providers below are written by hand in the shape of generated code.
+import 'package:managed/codegen.dart';
 import 'package:test/test.dart';
 
 @ManagedType(scope: ScopeType.cached)
@@ -39,15 +40,10 @@ mixin EmptyProvider on Manage<Empty> {
     return Empty(Zone.current[#text]);
   }
 
+  // Like generated code, pass non-null params: callWithParams(null) would
+  // call this override again.
   @override
-  Empty call([covariant EmptyParams? params]) {
-    final ZoneValues values = {};
-    final deps = {for (final dep in dependencies) dep.managedType: dep};
-    params?.inject(values, deps);
-    return runZoned(() {
-      return callForGenerated();
-    }, zoneValues: values);
-  }
+  Empty call([EmptyParams? params]) => callWithParams(params!);
 }
 
 class Middle {
@@ -71,7 +67,8 @@ class MiddleParams extends Params {
   @override
   void inject(ZoneValues values, Map<Type, Manage> dependencies) {
     values[#empty] = empty;
-    values[empty.targetType] = dependencies[empty.targetType]?.call(empty);
+    values[empty.targetType] =
+        dependencies.remove(empty.targetType)?.callWithParams(empty);
   }
 
   @override
@@ -86,14 +83,7 @@ mixin MiddleProvider on Manage<Middle> {
   }
 
   @override
-  Middle call([covariant MiddleParams? params]) {
-    final ZoneValues values = {};
-    final deps = {for (final dep in dependencies) dep.managedType: dep};
-    params?.inject(values, deps);
-    return runZoned(() {
-      return callForGenerated();
-    }, zoneValues: values);
-  }
+  Middle call([MiddleParams? params]) => callWithParams(params!);
 }
 
 class Some {
@@ -130,7 +120,7 @@ class SomeParams extends Params {
     values[#flag] = flag;
     values[#middle] = middle;
     values[middle.targetType] =
-        dependencies.remove(middle.targetType)?.call(middle);
+        dependencies.remove(middle.targetType)?.callWithParams(middle);
   }
 
   @override
@@ -150,7 +140,7 @@ mixin SomeProvider on Manage<Some> {
   }
 
   @override
-  Some call([covariant SomeParams? params]) => super.call(params);
+  Some call([SomeParams? params]) => callWithParams(params!);
 }
 
 abstract class Module {

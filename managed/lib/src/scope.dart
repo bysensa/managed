@@ -1,4 +1,4 @@
-part of '../managed.dart';
+part of 'manage.dart';
 
 /// Controls how instances are reused. Cached and singleton registrations with
 /// the same factory and declared dependencies share an instance in that scope.
@@ -57,7 +57,9 @@ class _InstanceScope implements Scope {
     late final _Entry<T> entry;
     entry = _Entry<T>(lifetimes, onDispose, () {
       if (identical(cache?[key], entry)) cache?.remove(key);
-    });
+    })
+      ..cache = cache
+      ..cacheKey = key;
     resolution?._entry = entry;
     try {
       final value = entry.build(factory, (instance) {
@@ -96,23 +98,27 @@ class _InstanceScope implements Scope {
 }
 
 /// A factory may be registered in both a global module and a user module.
-/// Only registrations that bind the same inputs can share its cached result.
+/// Only registrations that bind the same inputs and resolution key can share
+/// its cached result.
 class _FactoryBinding {
-  _FactoryBinding(this.factory, List<Manage> dependencies)
+  _FactoryBinding(this.factory, List<Manage> dependencies, this.resolutionKey)
       : inputs = [
           for (final dep in dependencies) (dep.managedType, dep._canonical),
         ];
 
   final Factory factory;
   final List<(Type, Manage)> inputs;
+  final Object? resolutionKey;
 
   @override
-  late final int hashCode = Object.hash(factory, Object.hashAll(inputs));
+  late final int hashCode =
+      Object.hash(factory, Object.hashAll(inputs), resolutionKey);
 
   @override
   bool operator ==(Object other) {
     if (other is! _FactoryBinding ||
         factory != other.factory ||
+        resolutionKey != other.resolutionKey ||
         inputs.length != other.inputs.length) return false;
     for (var i = 0; i < inputs.length; i++) {
       if (inputs[i] != other.inputs[i]) return false;

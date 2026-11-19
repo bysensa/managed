@@ -47,6 +47,17 @@ A cache hit or mock returns immediately. A cache miss that needs a required
 argument throws a `StateError` naming the missing `Params`. A constructor with
 sufficient defaults can be called as `StyleProvider.provider()`.
 
+Cached and singleton registrations of one class share an instance unless their
+`dependsOn` or `resolutionKey` differ. Params configure that instance when it
+is created. Give each differently configured registration its own key.
+
+```dart
+final headings = StyleProvider.register(
+    params: StyleParams(prefix: '#'), resolutionKey: #headings);
+final quotes = StyleProvider.register(
+    params: StyleParams(prefix: '>'), resolutionKey: #quotes);
+```
+
 ## Bind a session to a generated graph
 
 An annotated session can mix in `DependencyLifecycle`. Its `update` method
@@ -70,7 +81,9 @@ same type. Other entries add lifecycle dependencies. A refresh with the same
 ID keeps the editor. Both `await session().update(null)` and
 `await Scope.cached.reset()` release the editor before its cache. Classes
 can implement `init()` and `dispose()` directly through the mixin.
-Registrations also accept `params`, `onNewInstance` and `onDispose`.
+Registrations also accept `params`, `onNewInstance`, `onDispose` and a
+`resolutionKey`. A hand-written factory selects a keyed registration with
+`resolve<T>(key)` when several inputs share a type.
 [Executable session example](test/fixtures/client/test/bindings_test.dart.fixture)
 
 ## Constructor inputs

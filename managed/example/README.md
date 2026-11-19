@@ -80,18 +80,20 @@ flowchart LR
 
 ## Экспорт и генерация кода
 
-Для сохранённой заметки параметры одного экспорта выглядят так
+Для сохранённой заметки один экспорт выглядит так
 
 ```dart
 final markdown = await ExportModule.markdown(
-  ExportNoteParams('route', title: 'План поездки', includeAuthor: false),
+  'route',
+  title: 'План поездки',
+  includeAuthor: false,
 );
 ```
 
-`ExportNoteParams.inject` передаёт ключ через `ZoneValues` и вызывает
-сгенерированный провайдер шаблона с вложенными `MarkdownHeadingParams`.
-Пользователя и блокнот подставляет `dependsOn`. Заголовок и подпись задаются
-для каждого экспорта. Общий стиль задаёт `MarkdownStyleProvider.params` при
+Каждый вызов создаёт unique-регистрацию. Ключ попадает в замыкание фабрики,
+а шаблон регистрируется через `MarkdownTemplateProvider.register` с вложенными
+`MarkdownHeadingParams`. Пользователя и блокнот подставляет `dependsOn`.
+Заголовок и подпись задаются для каждого экспорта. Общий стиль задаёт `MarkdownStyleProvider.params` при
 создании кэшированного экземпляра. Поэтому смена префикса с `##` на `#`
 видна после `Scope.cached.reset()`.
 
